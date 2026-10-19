@@ -1,34 +1,42 @@
-# バージョンのタグ（例：0.1.0。manifest.json の version と同じ）を push すると、
-# main.js をビルドして Releases を作り、main.js と manifest.json を置く。
+# main に push すると、manifest.json の version（例：0.1.0）の Releases がまだなければ、
+# main.js をビルドして Releases を作り、main.js と manifest.json を置く（タグも GitHub が作る）。
+# すでにその版の Releases があれば何もしない。版を上げる時は manifest.json・package.json・versions.json の version を上げて push する。
 name: Release
 
 on:
   push:
-    tags:
-      - "*"
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Build
-        run: |
-          npm ci
-          npm run build
-      - name: Check version
-        run: |
-          v=$(node -p "require('./manifest.json').version")
-          if [ "$v" != "${GITHUB_REF_NAME}" ]; then echo "tag ${GITHUB_REF_NAME} != manifest version $v"; exit 1; fi
-      - name: Create release
+      - name: Version
+        id: v
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" main.js manifest.json \
-            --title "${GITHUB_REF_NAME}" --generate-notes
+          v=$(node -p "require('./manifest.json').version")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "$v" >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-node@v4
+        if: steps.v.outputs.exists == 'false'
+        with:
+          node-version: "20"
+      - name: Build
+        if: steps.v.outputs.exists == 'false'
+        run: |
+          npm ci
+          npm run build
+      - name: Create release
+        if: steps.v.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.v.outputs.version }}" main.js manifest.json \
+            --target "${GITHUB_SHA}" --title "${{ steps.v.outputs.version }}" --generate-notes
