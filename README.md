@@ -15,7 +15,7 @@ Obsidian の Excalidraw のキャンバスに、PowerPoint のような表を作
 
 ## 入れ方
 
-まだコミュニティプラグインの一覧には載せていません。
+まだコミュニティプラグインの一覧には載せていません。くわしい手順・更新・外し方・うまくいかない時は [INSTALL.md](INSTALL.md) を見てください。
 
 1. [Releases](https://github.com/yuno0395/obsidian-excalidraw-table/releases) から `main.js` と `manifest.json` を取る
    （または、このリポジトリで `npm install && npm run build` して作る）
