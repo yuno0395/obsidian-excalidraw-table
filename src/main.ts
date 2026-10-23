@@ -24,7 +24,7 @@ export default class ExcalidrawTablePlugin extends Plugin {
         },
       });
     const ops = this.tables.ops, reshape = (op: string) => (v: any) => this.tables.reshape(v, ops[op]);
-    cmd("insert-table", "create", async (view) => new CreateModal(this.app, (c, r, h) => this.tables.create(view, c, r, h)).open());
+    cmd("insert-table", "create", async (view) => this.openCreate(view));
     cmd("add-row", "addRow", reshape("addRow"));
     cmd("add-row-above", "addRowAbove", reshape("addRowAbove"));
     cmd("add-column", "addCol", reshape("addCol"));
@@ -61,6 +61,8 @@ export default class ExcalidrawTablePlugin extends Plugin {
   }
 
   async saveSettings() { await this.saveData(this.settings); }
+
+  openCreate(view: any) { new CreateModal(this.app, (c, r, h) => this.tables.create(view, c, r, h)).open(); }
 
   run(view: any, fn: (view: any) => Promise<any>) {
     fn(view).catch((e) => new Notice(e instanceof TableError ? e.message : `Excalidraw Table: ${e?.message ?? e}`));
@@ -137,6 +139,11 @@ class ViewHook {
 
   constructor(private plugin: ExcalidrawTablePlugin, private view: any) {
     const api = view.excalidrawAPI, tables = plugin.tables;
+    // "Insert table" icon in the tab header (Obsidian's own view actions, so it does not depend on Excalidraw's toolbar)
+    if (typeof view.addAction === "function") {
+      const icon: HTMLElement = view.addAction("table", t("create"), () => plugin.openCreate(view));
+      this.offs.push(() => icon.remove());
+    }
     const tidy = (resized?: boolean) => window.setTimeout(() => tables.onPointerUp(view, resized).catch((e) => console.error("Excalidraw Table", e)), 60);
     // a pointer up ends a drag; pointerDownState tells whether it was a resize (so a size the user chose is kept)
     this.add(api.onPointerUp((_tool: any, pds: any) => tidy(pds?.resize ? !!pds.resize.handleType : undefined)));

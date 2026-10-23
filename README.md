@@ -3,7 +3,7 @@
 Obsidian の Excalidraw のキャンバスに、PowerPoint のような表を作るプラグインです。
 （English below）
 
-- マス目をなぞって大きさを選ぶか、列数と行数を入れて表を作る（1行目は見出しとして塗る）
+- Excalidraw のタブ右上の表のアイコンから、マス目をなぞって大きさを選ぶか、列数と行数を入れて表を作る（1行目は見出しとして塗る）
 - Excel やスプレッドシートからコピーしたセル、Markdown の表を貼り付けると、そのまま表になる
 - 表を Markdown やタブ区切り（Excel 用）でコピーできる
 - セルに直接文字を書く。Enter で改行、Tab で次のセルへ（最後のセルで Tab を押すと行が増える）
@@ -30,7 +30,7 @@ BRAT を使っている場合は、`yuno0395/obsidian-excalidraw-table` を足�
 
 ## 使い方
 
-表を作るのはコマンドパレット（Ctrl/Cmd + P）の「表を作る」か、表のデータを貼り付けます。作った後の操作は、セルを選ぶと表の上に出るボタンか、キーボードでできます。コマンドパレットにも同じ操作があります（よく使うものはホットキーを付けると便利です）。
+表を作るのは、Excalidraw の図を開いた時にタブ右上（ファイル名の横）に出る表のアイコン、コマンドパレット（Ctrl/Cmd + P）の「表を作る」、または表のデータの貼り付けです。作った後の操作は、セルを選ぶと表の上に出るボタンか、キーボードでできます。コマンドパレットにも同じ操作があります（よく使うものはホットキーを付けると便利です）。
 
 | コマンド | すること |
 | --- | --- |
@@ -95,7 +95,7 @@ python3 tools/read_tables.py --json <ファイルまたはフォルダ>
 
 Tables on the Excalidraw canvas in Obsidian, PowerPoint style. Requires the Excalidraw plugin.
 
-- Insert a table by pointing at a size grid, or by columns and rows (the first row is shaded as a header).
+- Insert a table from the table icon in the Excalidraw tab header (or the command), by pointing at a size grid or by columns and rows (the first row is shaded as a header).
 - Paste cells copied from Excel / a spreadsheet, or a Markdown table, to make a table (Shift-paste for plain text).
 - Copy a table as Markdown or as tab-separated text for Excel.
 - Type into cells directly; Enter for a line break, Tab to the next cell (Tab in the last cell adds a row).
