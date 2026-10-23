@@ -57,16 +57,19 @@ BRAT を使っている場合は、`yuno0395/obsidian-excalidraw-table` を足�
 - **画像を入れる**：キャンバスに置いた画像を、セルの上にドラッグして離します。表の外へドラッグすると、表から外れます。
 - **大きさを変える**：
   - セルの右下の角をドラッグすると、その列の幅とその行の高さが変わります。
-  - 表全体を選んで角をドラッグすると、全部の列と行が比例して変わります（文字の大きさは変わりません）。
+  - 表全体を選んで角をドラッグすると、表全体が縦横同じ割合で伸び縮みします。文字の大きさ・セルの余白も同じ割合で変わるので、小さくしても見た目の釣り合いは変わりません。
+  - 表全体を選ぶと、表の右の辺と下の辺の真ん中に紫のつまみが出ます。右のつまみで横だけ、下のつまみで縦だけ伸び縮みします。文字の大きさは、縦と横の小さい方の割合に合わせます（横だけ広げても文字はそのまま、横だけ狭めると文字も小さくなって収まる）。
   - 行の高さは、中身より低くはなりません。ドラッグで高くした行はその高さを保ち、それ以外の行は中身に合わせて伸び縮みします。
 
-設定で、作る時の列の幅・文字の大きさ・見出しとセルと線の色、貼り付けで表を作るかどうかを変えられます。
+設定で、新しく作る表の列の幅・文字の大きさ・見出しとセルと線の色、貼り付けで表を作るかどうかを変えられます（色を変えても、すでにある表はその表の色のままです）。
 
 ## 気をつけること
 
 - 表がフレームより大きいと、はみ出した部分はフレームで切れて見えません（書き出しでも切れます）。
 - 表をドラッグで動かすと、Excalidraw は表を置いた先のフレームに入れ直します。
 - 表全体の大きさを変える角のつまみは小さく、少し外れると表の移動になります。
+- 表をとても小さくすると（元の 3 分の 1 ほどより小さく）、文字が途中で折り返されます。Excalidraw は図形の中の文字の周りに、大きさに関係なく 5 px の余白をとるためです（Excalidraw 自体の決まりで、変えられません）。
+- 表示モード（閲覧専用）の図では、表を変える操作はできません。
 - 0.1.0 で作った表で、文字を減らしても行が低くならない行は、一度その行をドラッグで低くすると直ります（0.1.0 の不具合で、高さが「ドラッグで決めた高さ」として残っているため）。
 - 日本語入力（IME）をオンにしたまま、Tab の直後すぐに打ち始めた場合の動きはまだ確かめていません。うまく入らない時は、Tab の後に一呼吸おいてから打ってください。
 
@@ -77,7 +80,7 @@ BRAT を使っている場合は、`yuno0395/obsidian-excalidraw-table` を足�
 | 要素 | customData |
 | --- | --- |
 | セルの四角 | `exTable: { id, r, c, rs, cs, al }`（rs・cs は結合した行数・列数、al は文字の寄せ） |
-| 左上のセル | `exTableModel: { id, nR, nC, fs, header, headerCol, cols, rowMin, rowH, merges, cells, imgs }` |
+| 左上のセル | `exTableModel: { id, nR, nC, fs, base, header, headerCol, colors, cols, rowMin, rowH, merges, cells, imgs }`（base は作った時の文字の大きさ、colors はその表の色） |
 | セルの中の画像 | `exTable: { id, r, c, img }`（img は vault の中のパス） |
 | セルの中の文字 | `exTableText: true` |
 
@@ -104,12 +107,32 @@ Tables on the Excalidraw canvas in Obsidian, PowerPoint style. Requires the Exca
 - Drop an image onto a cell to put it in that cell (scaled to the column width); drag it out to take it out.
 - Header row and header column; per-cell text alignment (left / center / right).
 - Drag a column width, a row height or the whole table; the table re-lays itself out when you release. Rows grow and shrink with their content.
+- Resizing the whole table scales the font and spacing with it. Handles on the right and bottom edges of a selected table stretch it sideways or downwards only (the font follows the smaller of the two scales). Below about a third of the original size, text starts to wrap: Excalidraw keeps a fixed 5 px margin around text in a shape.
 - Tables are plain rectangles and text, so they appear in Excalidraw's PNG/SVG/PDF export.
 - The content is also stored as data in the drawing, so other tools can read it (`tools/read_tables.py`).
 
 **Install**: copy `main.js` and `manifest.json` from Releases (or build with `npm install && npm run build`) into `.obsidian/plugins/excalidraw-table/`, then enable it. See [INSTALL.md](INSTALL.md). Commands: Insert table, Add row above / below, Add column to the left / right, Delete row, Delete column, Merge cells, Unmerge cells, Header row on/off, Header column on/off, Align left / center / right, Copy table as Markdown, Copy table as tab-separated text.
 
 To select a cell, double-click the table (this enters the group and selects the cell); Shift-click to add cells.
+
+## 開発
+
+```
+npm install
+npm run build   # 型チェックと main.js の作成
+npm test        # 表の形の操作と、貼り付け・コピーの変換のテスト
+```
+
+| ファイル | 役目 |
+| --- | --- |
+| `src/main.ts` | プラグイン本体（コマンド・設定・貼り付けの割り込み・図ごとの見張り役の取り付け） |
+| `src/view-hook.ts` | 図ごとの見張り役（操作の後の整え直し・Tab と矢印キー・タブ右上のアイコン） |
+| `src/toolbar.ts` | セルの上のボタンと、表の伸縮つまみ |
+| `src/table.ts` | 図の中の表（並べ直し・描く・作り直す・寄せ・伸縮） |
+| `src/model.ts` | 表のデータと、行・列の追加削除・結合（Obsidian に依らない。テストあり） |
+| `src/text.ts` | 貼り付けた文字から表へ、表から Markdown・タブ区切りへ（テストあり） |
+| `src/create-modal.ts` | 「表を作る」の画面 |
+| `src/settings.ts` | 設定 |
 
 ## License
 

@@ -1,11 +1,12 @@
 {
   "name": "obsidian-excalidraw-table",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Tables for Excalidraw in Obsidian: create by rows and columns, merge cells, drag to resize, images in cells.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "node test/run.mjs"
   },
   "author": "yuno0395",
   "license": "MIT",

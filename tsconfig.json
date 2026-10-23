@@ -8,8 +8,16 @@
     "isolatedModules": true,
     "strict": false,
     "noImplicitAny": false,
-    "lib": ["DOM", "ES2020"],
-    "types": ["node"]
+    "lib": [
+      "DOM",
+      "ES2020"
+    ],
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ]
 }

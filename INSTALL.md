@@ -3,7 +3,7 @@
 Obsidian の Excalidraw キャンバスに表を作るプラグイン「Excalidraw Table」の入れ方です。
 コミュニティプラグインの一覧にはまだ載っていないので、手で入れるか BRAT で入れます。
 
-動作確認した環境：Windows 11、Obsidian 1.14.4、Excalidraw 2.29.0、Excalidraw Table 0.2.1
+動作確認した環境：Windows 11、Obsidian 1.14.4、Excalidraw 2.29.0、Excalidraw Table 0.3.0
 
 ---
 
