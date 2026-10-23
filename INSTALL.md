@@ -3,7 +3,7 @@
 Obsidian の Excalidraw キャンバスに表を作るプラグイン「Excalidraw Table」の入れ方です。
 コミュニティプラグインの一覧にはまだ載っていないので、手で入れるか BRAT で入れます。
 
-動作確認した環境：Windows 11、Obsidian 1.14.4、Excalidraw 2.29.0、Excalidraw Table 0.1.0
+動作確認した環境：Windows 11、Obsidian 1.14.4、Excalidraw 2.29.0、Excalidraw Table 0.2.0
 
 ---
 
@@ -84,9 +84,8 @@ npm run build
 ## 4. 入ったか確かめる
 
 1. Excalidraw の図を開く（コマンドパレット →「Excalidraw: Create new drawing」など）
-2. コマンドパレットで「Excalidraw Table」と打つと、次の 7 つが出れば入っています
-   - 表を作る ／ 行を追加（下） ／ 列を追加（右） ／ 行を削除 ／ 列を削除 ／ セルを結合 ／ セルの結合を解除
-3. 「表を作る」→ 列数・行数を入れて「作る」で、1 行目が灰色の表ができれば OK です
+2. コマンドパレットで「Excalidraw Table」と打つと、「表を作る」「行を追加（下）」などのコマンドが出れば入っています
+3. 「表を作る」→ マス目をなぞってクリック（または列数・行数を入れて「作る」）で、1 行目が灰色の表ができれば OK です
 
 コマンドは Excalidraw の図を開いている時だけ出ます。Markdown のノートを開いている時は出ません。
 
