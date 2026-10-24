@@ -110,3 +110,9 @@ test("stretching one way keeps the font; the stretched rows keep their height", 
   assert.equal(M.fs, 8);
   assert.deepEqual(M.rowMin, [36]);
 });
+
+test("merge keeps the first cell's font size", () => {
+  const M = model(1, 2);
+  const R = ops.merge(M, { "0,0": { text: "a", imgs: [], fr: 1.5 }, "0,1": { text: "b", imgs: [], fr: 0.5 } }, [sel(0, 0), sel(0, 1)]);
+  assert.equal(R.content["0,0"].fr, 1.5);
+});

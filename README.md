@@ -3,9 +3,9 @@
 Obsidian の Excalidraw のキャンバスに、PowerPoint のような表を作るプラグインです。
 （English below）
 
-- Excalidraw のタブ右上の表のアイコンから、マス目をなぞって大きさを選ぶか、列数と行数を入れて表を作る（1行目は見出しとして塗る）
+- Excalidraw のタブ右上の表のアイコンから、マス目をなぞって大きさを選ぶか、列数と行数を入れて表を作る
 - Excel やスプレッドシートからコピーしたセル、Markdown の表を貼り付けると、そのまま表になる
-- 表を作る時にカラーテーマを選べる（好きな色を線か背景に使う。テーマとして保存もできる）
+- 表を作る時に色を選べる（線の色、一番上の行とそれ以外の行の塗りの色と濃さ。塗りなしもできる。テーマとして保存もできる）
 - 表をコピーして、Excel・PowerPoint・Word に表のまま（色・結合も）貼り付けられる。CSV・Markdown でもコピーできる
 - セルに直接文字を書く。Enter で改行、Tab で次のセルへ（最後のセルで Tab を押すと行が増える）
 - 矢印キーでセルを移り、Shift + 矢印で範囲を選ぶ
@@ -61,17 +61,21 @@ BRAT を使っている場合は、`yuno0395/obsidian-excalidraw-table` を足�
   - セルの右下の角をドラッグすると、その列の幅とその行の高さが変わります。
   - 表全体を選んで角をドラッグすると、表全体が縦横同じ割合で伸び縮みします。文字の大きさ・セルの余白も同じ割合で変わるので、小さくしても見た目の釣り合いは変わりません。
   - 表全体を選ぶと、表の右の辺と下の辺の真ん中に紫のつまみが出ます。右のつまみで横だけ、下のつまみで縦だけ伸び縮みします。文字の大きさは、縦と横の小さい方の割合に合わせます（横だけ広げても文字はそのまま、横だけ狭めると文字も小さくなって収まる）。
+- **文字の大きさ**：セルを選んで Excalidraw のスタイル（左下のボタン）で文字の大きさを変えると、そのセルだけその大きさになり、行の高さも合わせて変わります。行や列を足しても、結合しても、表全体を拡大・縮小しても（比率のまま）残ります。
   - 行の高さは、中身より低くはなりません。ドラッグで高くした行はその高さを保ち、それ以外の行は中身に合わせて伸び縮みします。
 
-- **色（カラーテーマ）**：「表を作る」の画面の「色」で、見本から色を選ぶか「好きな色」で決め、「色の使い方」を選びます。
-  - 線：線をその色にし、見出しは薄い同じ系統の色。
-  - 塗り：見出しをその色で塗り、本文は薄い同じ系統の色。見出しの文字は、塗った色に合わせて白か黒になります。
+- **色（カラーテーマ）**：「表を作る」の画面の「色」で決めます。
+  - 見本は「標準」（黒い線・一番上の行は薄い灰色・ほかは塗りなし）と、保存したテーマが並びます。
+  - 「線の色」「一番上の行の塗り」「それ以外の行の塗り」を、それぞれ選べます。塗りは色と濃さ（不透明度 0〜100）で決め、0 で塗りなしです。
+  - 文字は塗った色に合わせて白か黒になります。
+  - 塗りなし（0）は、ほとんど見えないごく薄い白で塗っています。Excalidraw は本当に透明な図形の中をクリックできないため、これでセルをクリックで選べるようにしています。
+  - Excel・PowerPoint 用にコピーする時、透けた塗りは白の上に重ねた時の色にします（Excel には透ける色がないため）。
   - マス目の見本がその色になるので、作る前に見た目が分かります。
   - 「テーマとして保存」で名前を付けて保存すると、次から見本に並びます。保存したテーマは右クリックか、設定の「保存したテーマ」で消せます。
   - 最後に選んだ色は覚えていて、次に作る表と、貼り付けで作る表に使います。
 - **コピー**：セルを選ぶと出るボタンの右端（クリップボードのアイコン）から、Excel・PowerPoint 用／CSV／Markdown を選べます。
 
-設定で、新しく作る表の列の幅・文字の大きさ・見出しとセルと線の色、貼り付けで表を作るかどうかを変えられます（色を変えても、すでにある表はその表の色のままです）。
+設定で、新しく作る表の列の幅・文字の大きさ、貼り付けで表を作るかどうかを変えられます。保存したテーマもここで消せます。
 
 ## 気をつけること
 
@@ -108,9 +112,9 @@ python3 tools/read_tables.py --json <ファイルまたはフォルダ>
 
 Tables on the Excalidraw canvas in Obsidian, PowerPoint style. Requires the Excalidraw plugin.
 
-- Insert a table from the table icon in the Excalidraw tab header (or the command), by pointing at a size grid or by columns and rows (the first row is shaded as a header).
+- Insert a table from the table icon in the Excalidraw tab header (or the command), by pointing at a size grid or by columns and rows 
 - Paste cells copied from Excel / a spreadsheet, or a Markdown table, to make a table (Shift-paste for plain text).
-- Colour themes when inserting: a colour used for the lines or the fill, saved as named themes.
+- Colours when inserting: the line colour, and the fill colour and opacity of the top row and of the other rows; saved as named themes. Opacity 0 is an almost invisible white, so the cells can still be clicked.
 - Copy a table for Excel / PowerPoint / Word (pastes as a real table with colours and merged cells), or as CSV or Markdown.
 - Type into cells directly; Enter for a line break, Tab to the next cell (Tab in the last cell adds a row).
 - Arrow keys move between cells; Shift + arrows select a range.

@@ -40,6 +40,8 @@ const textColor = (M: Model, r: number, c: number) => (isHeader(M, r, c) ? M.col
 // A table the user grouped with other shapes keeps that outer group too.
 const groupsOf = (head: any): string[] => [...(head?.groupIds || [])];
 
+// the cell's font size as a ratio to the table's (set when the user changes the size of the text in a cell)
+const ratioOf = (e: any): number => e?.customData?.[CELL]?.fr || 1;
 const textOf = (b: any) => (b ? b.originalText ?? b.text ?? "" : "");
 // alignment of a cell: the text's own alignment once the plugin has set it up (so a change in Excalidraw's panel is kept)
 const alignOf = (e: any, b: any): Align => (b?.customData?.[TEXT] ? b.textAlign : e?.customData?.[CELL]?.al) || "left";
@@ -142,16 +144,20 @@ export class Tables {
     }
     const X = (j: number) => ox + sum(M.cols, 0, j);
     // 2) widths, font size and alignment; re-wrap text
-    const m1 = new Map(P.els.map((e: any) => [e.id, e])), al: Record<string, Align> = {};
+    const m1 = new Map(P.els.map((e: any) => [e.id, e])), al: Record<string, Align> = {}, fr: Record<string, number> = {};
     for (const a of A) {
       const e = P.rectAt(a.r, a.c); if (!e) continue;
       m1.set(e.id, upd(e, { x: X(a.c), width: sum(M.cols, a.c, a.cs), frameId,
         ...(e.backgroundColor === "transparent" ? { backgroundColor: cellColor, fillStyle: "solid" } : {}) }));
       const b = P.bound(e), k = key(a.r, a.c);
       al[k] = alignOf(e, b);
+      fr[k] = ratioOf(e);
       if (!b) continue;
-      const p: any = {};
-      if (b.fontSize !== M.fs) p.fontSize = M.fs;
+      // the user changed the size of the text (Excalidraw's font size): keep it, as a ratio to the table's size
+      // (not when the table was scaled as a whole: then Excalidraw scaled the text, and the table's size follows instead)
+      if (b.customData?.[TEXT] && !opt.fromModel && !scaled && Math.abs(b.fontSize - H.fs * fr[k]) > 0.01) fr[k] = b.fontSize / M.fs;
+      const p: any = {}, want = M.fs * fr[k];
+      if (Math.abs(b.fontSize - want) > 0.001) p.fontSize = want;
       if (!b.customData?.[TEXT]) {
         // text just typed into the cell: set it up (alignment; the table's text colour, as Excalidraw uses its current colour)
         Object.assign(p, { textAlign: al[k], verticalAlign: "top", customData: { ...(b.customData || {}), [TEXT]: true } });
@@ -194,7 +200,7 @@ export class Tables {
     for (const { a, e } of info) {
       const head = a.r === 0 && a.c === 0;
       m2.set(e.id, upd(m2.get(e.id), { x: X(a.c), y: Y(a.r), width: sum(M.cols, a.c, a.cs), height: sum(M.rowH, a.r, a.rs),
-        customData: { ...e.customData, [CELL]: { ...e.customData[CELL], rs: a.rs, cs: a.cs, al: al[key(a.r, a.c)] }, ...(head ? { [MODEL]: M } : {}) } }));
+        customData: { ...e.customData, [CELL]: { ...e.customData[CELL], rs: a.rs, cs: a.cs, al: al[key(a.r, a.c)], fr: fr[key(a.r, a.c)] }, ...(head ? { [MODEL]: M } : {}) } }));
     }
     // images in front of the cells (so a rebuilt cell's fill does not hide them)
     const arr = [...m2.values()], isImg = (e: any) => e.type === "image" && e.customData?.[CELL]?.id === T;
@@ -262,7 +268,7 @@ export class Tables {
       if (Math.abs(e.x - ox - sum(H.cols, 0, a.c)) > 1 || Math.abs(e.y - oy - sum(H.rowH, 0, a.r)) > 1 ||
           Math.abs(e.width - sum(H.cols, a.c, a.cs)) > 1 || Math.abs(e.height - sum(H.rowH, a.r, a.rs)) > 1) return true;
       if ((e.frameId ?? null) !== (P.head.frameId ?? null)) return true;
-      const b = P.bound(e); if (b && (b.fontSize !== H.fs || !b.customData?.[TEXT])) return true;
+      const b = P.bound(e); if (b && (Math.abs(b.fontSize - H.fs * ratioOf(e)) > 0.001 || !b.customData?.[TEXT])) return true;
     }
     const order = new Map(P.els.map((e: any, i: number) => [e.id, i]));
     for (const im of P.imgs) {
@@ -328,7 +334,8 @@ export class Tables {
     const ids: string[] = [];
     for (const a of anchors(M)) {
       const k = key(a.r, a.c), cx = x + sum(M.cols, 0, a.c), cy = y + sum(M.rowH, 0, a.r);
-      const w = sum(M.cols, a.c, a.cs), h = sum(M.rowH, a.r, a.rs), t = content[k]?.text || "", al = content[k]?.al || "left";
+      const w = sum(M.cols, a.c, a.cs), h = sum(M.rowH, a.r, a.rs), t = content[k]?.text || "", al = content[k]?.al || "left", fr = content[k]?.fr || 1;
+      ea.style.fontSize = M.fs * fr;
       // cells are filled: an unfilled cell cannot be clicked inside
       ea.style.backgroundColor = content[k]?.bg || (isHeader(M, a.r, a.c) ? C.header : C.cell);
       const id = t
@@ -336,7 +343,7 @@ export class Tables {
         : ea.addRect(cx, cy, w, h);
       const el = ea.getElement(id);
       el.x = cx; el.y = cy; el.width = w; el.height = Math.max(el.height, h);   // a box with text is created offset by its padding
-      ea.addAppendUpdateCustomData(id, { [CELL]: { id: M.id, r: a.r, c: a.c, rs: a.rs, cs: a.cs, al }, ...(a.r === 0 && a.c === 0 ? { [MODEL]: M } : {}) });
+      ea.addAppendUpdateCustomData(id, { [CELL]: { id: M.id, r: a.r, c: a.c, rs: a.rs, cs: a.cs, al, fr }, ...(a.r === 0 && a.c === 0 ? { [MODEL]: M } : {}) });
       ids.push(id);
       const bt = ea.getElements().find((e: any) => e.containerId === id);
       if (bt) {
@@ -384,7 +391,7 @@ export class Tables {
     const content: Content = {};
     for (const a of anchors(M)) {
       const e = P.rectAt(a.r, a.c), b = P.bound(e), bg = e?.backgroundColor;
-      content[key(a.r, a.c)] = { text: textOf(b), imgs: P.imgsAt(a.r, a.c).map((x: any) => x.id), al: alignOf(e, b),
+      content[key(a.r, a.c)] = { text: textOf(b), imgs: P.imgsAt(a.r, a.c).map((x: any) => x.id), al: alignOf(e, b), fr: ratioOf(e),
         // a cell in the table's own header / cell colour follows the header rows and columns; a colour the user picked moves with the cell
         bg: bg && bg !== "transparent" && bg !== C.header && bg !== C.cell ? bg : undefined };
     }
@@ -437,7 +444,7 @@ export class Tables {
     for (const a of anchors(M)) {
       const e = P.rectAt(a.r, a.c), b = P.bound(e);
       table.cells.push({ ...a, text: (cells[a.r]?.[a.c] ?? "").replace(/<br>/g, "\n"), bg: e?.backgroundColor,
-        color: b?.strokeColor ?? C.text ?? C.stroke, align: alignOf(e, b) });
+        color: b?.strokeColor ?? C.text ?? C.stroke, align: alignOf(e, b), fs: M.fs * ratioOf(e) });
     }
     return { cells, table };
   }

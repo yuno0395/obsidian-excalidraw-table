@@ -36,7 +36,8 @@ export interface Model {
 }
 
 // what a cell holds while the table is rebuilt
-export type Cell = { text: string; imgs: string[]; bg?: string; al?: Align };
+// fr: the cell's font size as a ratio to the table's (1 = the table's size), so it scales with the table
+export type Cell = { text: string; imgs: string[]; bg?: string; al?: Align; fr?: number };
 export type Content = Record<string, Cell>;
 export type OpResult = { M: Model; content: Content; focus?: { r: number; c: number } };
 export type Op = (M: Model, content: Content, sel: Anchor[]) => OpResult;
@@ -180,16 +181,17 @@ export function structureOps(colWidth: () => number, msg: (k: string) => string)
       M.merges = M.merges.filter((m) => m.r > r1 || m.r + m.rs - 1 < r0 || m.c > c1 || m.c + m.cs - 1 < c0);
       M.merges.push({ r: r0, c: c0, rs: r1 - r0 + 1, cs: c1 - c0 + 1 });
       const texts: string[] = [], imgs: string[] = [];
-      let bg: string | undefined, al: Align | undefined;
+      let bg: string | undefined, al: Align | undefined, fr: number | undefined;
       for (let i = r0; i <= r1; i++) for (let j = c0; j <= c1; j++) {
         const v = content[key(i, j)]; if (!v) continue;
         if (v.text) texts.push(v.text);
         imgs.push(...(v.imgs || []));
         if (bg === undefined) bg = v.bg;
         if (al === undefined) al = v.al;
+        if (fr === undefined) fr = v.fr;
         delete content[key(i, j)];
       }
-      content[key(r0, c0)] = { text: texts.join("\n"), imgs, bg, al };
+      content[key(r0, c0)] = { text: texts.join("\n"), imgs, bg, al, fr };
       return { M, content, focus: { r: r0, c: c0 } };
     },
     // the content stays in the top-left cell

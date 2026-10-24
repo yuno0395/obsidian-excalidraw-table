@@ -23,3 +23,12 @@ test("HTML keeps merges, colours, alignment and line breaks inside a cell", () =
   assert.equal((html.match(/<tr>/g) || []).length, 2);
   assert.ok(!/background:transparent/.test(html));
 });
+
+test("HTML: a see-through fill is given as it looks on white; no fill is left out", () => {
+  const html = toHtml({ nR: 1, nC: 2, cols: [80, 80], stroke: "#000000", fontSize: 16, cells: [
+    { r: 0, c: 0, rs: 1, cs: 1, text: "half", bg: "#00000080" },
+    { r: 0, c: 1, rs: 1, cs: 1, text: "none", bg: "#ffffff01" },
+  ] });
+  assert.match(html, /background:#7f7f7f">half/);
+  assert.match(html, /font-size:12pt">none/);
+});

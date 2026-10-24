@@ -2,6 +2,7 @@
 // Pure functions (tested in test/text.test.ts).
 
 import { Align, PAD } from "./model";
+import { onWhite } from "./theme";
 import { maxOf } from "./util";
 
 // Tab-separated text (Excel, Google Sheets, Numbers) or a Markdown table -> rows of cell texts (all rows the same length).
@@ -106,7 +107,7 @@ export function toCsv(cells: (string | null)[][]): string {
 }
 
 // ---------- HTML table, for pasting into Excel, PowerPoint, Word, Google Sheets... ----------
-export type ExportCell = { r: number; c: number; rs: number; cs: number; text: string; bg?: string; color?: string; align?: Align };
+export type ExportCell = { r: number; c: number; rs: number; cs: number; text: string; bg?: string; color?: string; align?: Align; fs?: number };
 export interface ExportTable { nR: number; nC: number; cols: number[]; stroke: string; fontSize: number; cells: ExportCell[] }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -116,13 +117,15 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 export function toHtml(T: ExportTable): string {
   const byRow = new Map<number, ExportCell[]>();
   for (const c of T.cells) { if (!byRow.has(c.r)) byRow.set(c.r, []); byRow.get(c.r)!.push(c); }
-  const fs = Math.max(1, Math.round(T.fontSize * 0.75 * 10) / 10);   // px -> pt
+  const pt = (px: number) => Math.max(1, Math.round(px * 0.75 * 10) / 10);   // px -> pt
   const rows: string[] = [];
   for (let r = 0; r < T.nR; r++) {
     const tds = (byRow.get(r) || []).sort((a, b) => a.c - b.c).map((c) => {
       const style = [
-        `border:1px solid ${T.stroke}`, "padding:3pt 6pt", "vertical-align:top", `font-size:${fs}pt`,
-        c.bg && c.bg !== "transparent" ? `background:${c.bg}` : "", c.color ? `color:${c.color}` : "", c.align ? `text-align:${c.align}` : "",
+        `border:1px solid ${T.stroke}`, "padding:3pt 6pt", "vertical-align:top", `font-size:${pt(c.fs ?? T.fontSize)}pt`,
+        // Excel has no see-through colours: a fill as it looks on white
+        onWhite(c.bg) ? `background:${onWhite(c.bg)}` : "",
+        c.color ? `color:${c.color}` : "", c.align ? `text-align:${c.align}` : "",
       ].filter(Boolean).join(";");
       const span = (c.cs > 1 ? ` colspan="${c.cs}"` : "") + (c.rs > 1 ? ` rowspan="${c.rs}"` : "");
       const body = c.text.split("\n").map(esc).join('<br style="mso-data-placement:same-cell;">');

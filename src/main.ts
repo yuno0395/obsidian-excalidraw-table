@@ -16,7 +16,7 @@ import { OpName, TableError } from "./model";
 import { DEFAULT_SETTINGS, TableSettingTab, TableSettings } from "./settings";
 import { Tables } from "./table";
 import { parseTable, toCsv, toHtml, toMarkdown, toTsv } from "./text";
-import { colorsOf } from "./theme";
+import { colorsOf, normalizeTheme } from "./theme";
 import { ViewHook } from "./view-hook";
 
 const EXCALIDRAW = "obsidian-excalidraw-plugin";
@@ -30,7 +30,9 @@ export default class ExcalidrawTablePlugin extends Plugin {
 
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    this.settings.themes = [...(this.settings.themes || [])];
+    // themes saved by earlier versions are read into the current shape
+    this.settings.themes = (this.settings.themes || []).map((th: any) => ({ name: String(th?.name ?? ""), ...normalizeTheme(th) }));   // keeps names
+    this.settings.lastTheme = this.settings.lastTheme ? normalizeTheme(this.settings.lastTheme) : null;
     this.tables = new Tables((view) => this.ea(view), () => this.settings, (k) => t(k as MsgKey));
 
     const cmd = (id: string, name: MsgKey, run: (view: any) => Promise<unknown>) =>
@@ -83,8 +85,7 @@ export default class ExcalidrawTablePlugin extends Plugin {
 
   // colours of the theme picked last (for tables made by pasting)
   private lastColors() {
-    const s = this.settings;
-    return colorsOf(s.lastTheme, { header: s.headerColor, cell: s.cellColor, stroke: s.strokeColor });
+    return colorsOf(this.settings.lastTheme);
   }
 
   run(view: any, fn: (view: any) => Promise<unknown>) {

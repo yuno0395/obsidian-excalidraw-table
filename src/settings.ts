@@ -1,6 +1,6 @@
 import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { t, MsgKey } from "./i18n";
-import { SavedTheme, ThemeChoice } from "./theme";
+import { SavedTheme, Theme, normalizeTheme } from "./theme";
 
 export interface TableSettings {
   colWidth: number;
@@ -10,7 +10,7 @@ export interface TableSettings {
   strokeColor: string;
   pasteAsTable: boolean;
   themes: SavedTheme[];            // themes the user saved
-  lastTheme: ThemeChoice | null;   // the theme picked last (also used for pasted tables)
+  lastTheme: Theme | null;         // the colours picked last (also used for pasted tables)
 }
 
 export const DEFAULT_SETTINGS: TableSettings = {
@@ -37,19 +37,16 @@ export class TableSettingTab extends PluginSettingTab {
       new Setting(containerEl).setName(t(name)).addText((tx) => tx.setValue(String(s[k])).onChange(async (v) => {
         const n = parseInt(v); if (n > 0) { s[k] = n; await save(); }
       }));
-    const color = (name: MsgKey, k: "headerColor" | "cellColor" | "strokeColor") =>
-      new Setting(containerEl).setName(t(name)).addColorPicker((cp) => cp.setValue(s[k]).onChange(async (v) => { s[k] = v; await save(); }));
     num("sColWidth", "colWidth");
     num("sFontSize", "fontSize");
-    color("sHeaderColor", "headerColor");
-    color("sCellColor", "cellColor");
-    color("sStrokeColor", "strokeColor");
     new Setting(containerEl).setName(t("sPaste")).setDesc(t("sPasteDesc"))
       .addToggle((tg) => tg.setValue(s.pasteAsTable).onChange(async (b) => { s.pasteAsTable = b; await save(); }));
     // saved themes: shown in the insert dialog; deleted here
     new Setting(containerEl).setName(t("sThemes")).setDesc(s.themes.length ? t("sThemesDesc") : t("sThemesNone")).setHeading();
     s.themes.forEach((th, i) => {
-      new Setting(containerEl).setName(th.name).setDesc(`${th.color}  ${th.mode === "line" ? t("modeLine") : t("modeFill")}`)
+      const n = normalizeTheme(th);
+      new Setting(containerEl).setName(th.name)
+        .setDesc(`${t("lineColor")} ${n.stroke} / ${t("fillHeader")} ${n.header.color} ${n.header.alpha}% / ${t("fillBody")} ${n.body.color} ${n.body.alpha}%`)
         .addExtraButton((b) => b.setIcon("trash").setTooltip(t("delete")).onClick(async () => { s.themes.splice(i, 1); await save(); this.display(); }));
     });
   }
