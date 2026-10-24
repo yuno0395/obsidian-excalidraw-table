@@ -2,7 +2,8 @@
 // Pure functions: no Obsidian, no Excalidraw, so they can be tested on their own (test/model.test.ts).
 //
 // Data kept in Excalidraw element customData:
-//   cell rectangle : customData.exTable      = { id, r, c, rs, cs, al }   (rs/cs = merged rows/columns, al = text alignment)
+//   cell rectangle : customData.exTable      = { id, r, c, rs, cs, al, fr }
+//                    (rs/cs = merged rows/columns, al = text alignment, fr = font size as a ratio to the table's)
 //   top-left cell  : customData.exTableModel = Model (below)
 //   image in a cell: customData.exTable      = { id, r, c, img }          (img = vault path of the image)
 //   text in a cell : customData.exTableText  = true                       (alignment already set up)
@@ -55,6 +56,9 @@ export const pad = (M: Pick<Model, "fs" | "base">) => PAD * unit(M);
 export const gap = (M: Pick<Model, "fs" | "base">) => GAP * unit(M);
 export const minH = (M: Pick<Model, "fs" | "base">) => MINH * unit(M);
 export const minW = (M: Pick<Model, "fs" | "base">) => MINW * unit(M);
+
+// a copy that can be changed without touching the one stored in the scene
+export const copyModel = (M: Model): Model => JSON.parse(JSON.stringify(M));
 
 // Scale the whole table: widths by sx, heights by sy. The font (and with it all spacing) scales by the smaller of the two,
 // so making the table narrower or lower shrinks the text to fit, and stretching it one way keeps the text as it is.

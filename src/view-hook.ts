@@ -1,9 +1,11 @@
 // Follows one Excalidraw view: tidies the tables after a pointer up and after typing, handles the keys
 // (Tab / arrows between cells), shows the toolbar and the stretch handles, and the "Insert table" icon in the tab header.
 
+import { sceneX, sceneY } from "./geom";
 import { t } from "./i18n";
 import { CELL, anchors, cellAt } from "./model";
 import { Tables, isCellSelection, modelOf, selectedCells, wholeTableSelected } from "./table";
+import { CopyFormat } from "./text";
 import { CellToolbar, StretchHandles } from "./toolbar";
 import { until } from "./util";
 
@@ -11,7 +13,7 @@ export interface Host {
   tables: Tables;
   run(view: any, fn: (view: any) => Promise<unknown>): void;
   openCreate(view: any): void;
-  copy(view: any, fmt: "office" | "csv" | "md"): Promise<void>;
+  copy(view: any, fmt: CopyFormat): Promise<void>;
 }
 
 // queued keys during a hop: plain text, or one of these
@@ -62,8 +64,8 @@ export class ViewHook {
     }));
     // pointer position in drawing coordinates, for placing a pasted table (Excalidraw's own can be stale)
     const onPtr = (ev: PointerEvent) => {
-      const st = api.getAppState(), z = st.zoom?.value ?? 1;
-      view._exTablePointer = { x: (ev.clientX - st.offsetLeft) / z - st.scrollX, y: (ev.clientY - st.offsetTop) / z - st.scrollY };
+      const st = api.getAppState();
+      view._exTablePointer = { x: sceneX(st, ev.clientX), y: sceneY(st, ev.clientY) };
     };
     this.listen(view.contentEl, "pointermove", onPtr);
     this.listen(view.contentEl, "pointerdown", (ev: PointerEvent) => {
@@ -189,8 +191,11 @@ export class ViewHook {
     }
   }
 
+  // Excalidraw's text box while typing
+  private editor() { return this.view.contentEl.querySelector("textarea.excalidraw-wysiwyg") as HTMLTextAreaElement | null; }
+
   private typeIn(k: string) {
-    const ta = this.view.contentEl.querySelector("textarea.excalidraw-wysiwyg") as HTMLTextAreaElement | null; if (!ta) return;
+    const ta = this.editor(); if (!ta) return;
     ta.focus();
     if (k === BS) ta.ownerDocument.execCommand("delete");
     else ta.ownerDocument.execCommand("insertText", false, k);
@@ -211,8 +216,7 @@ export class ViewHook {
 
   // Excalidraw's text box ends typing on Escape; Enter on a selected box starts it
   private finishTyping() {
-    const ta = this.view.contentEl.querySelector("textarea.excalidraw-wysiwyg") as HTMLTextAreaElement | null;
-    ta?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+    this.editor()?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
   }
   private startTyping() {
     const el = (this.view.contentEl.querySelector(".excalidraw") as HTMLElement | null) ?? this.view.contentEl;

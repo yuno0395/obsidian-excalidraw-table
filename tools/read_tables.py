@@ -12,6 +12,8 @@ import json, os, re, sys
 
 
 # ---------- LZString.decompressFromBase64 (Excalidraw's compressed drawings) ----------
+# A port of lz-string's decompressFromBase64 (https://github.com/pieroxy/lz-string),
+# Copyright (c) 2013 pieroxy, MIT License: see THIRD_PARTY_NOTICES.md.
 _B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
 
 def _lz_decompress_b64(s):

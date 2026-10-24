@@ -3,11 +3,14 @@
 //   main.ts         the plugin: commands, settings, paste hook, one ViewHook per Excalidraw view
 //   view-hook.ts    per view: tidy after pointer up / typing, keys (Tab, arrows), toolbar, stretch handles, tab icon
 //   toolbar.ts      the cell toolbar and the stretch handles drawn over the canvas
-//   table.ts        tables in the Excalidraw scene: layout, draw, rebuild (structure commands), align, scale
+//   table.ts        tables in the Excalidraw scene: layout, draw, rebuild (structure commands), align, scale, export
 //   model.ts        the table model and the structure operations (pure)
-//   text.ts         pasted text -> cells, cells -> Markdown / TSV (pure)
+//   text.ts         pasted text -> cells; cells -> Markdown / TSV / CSV / HTML (pure)
+//   theme.ts        colour themes (pure)
+//   geom.ts         boxes and drawing <-> window coordinates (pure)
 //   create-modal.ts the "Insert table" dialog
 //   settings.ts     settings and their tab
+//   i18n.ts, util.ts  messages (English / Japanese), small helpers
 
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CreateModal } from "./create-modal";
@@ -15,12 +18,11 @@ import { t, MsgKey } from "./i18n";
 import { OpName, TableError } from "./model";
 import { DEFAULT_SETTINGS, TableSettingTab, TableSettings } from "./settings";
 import { Tables } from "./table";
-import { parseTable, toCsv, toHtml, toMarkdown, toTsv } from "./text";
+import { CopyFormat, parseTable, toCsv, toHtml, toMarkdown, toTsv } from "./text";
 import { colorsOf, normalizeTheme } from "./theme";
 import { ViewHook } from "./view-hook";
 
 const EXCALIDRAW = "obsidian-excalidraw-plugin";
-export type CopyFormat = "office" | "csv" | "md";
 
 export default class ExcalidrawTablePlugin extends Plugin {
   settings: TableSettings;

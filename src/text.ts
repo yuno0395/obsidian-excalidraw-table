@@ -1,9 +1,12 @@
-// Table <-> text: reading pasted text, writing Markdown / tab-separated text, sizing columns for text.
+// Table <-> text: reading pasted text; writing Markdown, tab-separated text, CSV and HTML; sizing columns for text.
 // Pure functions (tested in test/text.test.ts).
 
 import { Align, PAD } from "./model";
 import { onWhite } from "./theme";
 import { maxOf } from "./util";
+
+// how a table is copied out: for Excel / PowerPoint (HTML, with tab-separated text), CSV, or Markdown
+export type CopyFormat = "office" | "csv" | "md";
 
 // Tab-separated text (Excel, Google Sheets, Numbers) or a Markdown table -> rows of cell texts (all rows the same length).
 // Anything else -> null, so an ordinary paste stays ordinary.

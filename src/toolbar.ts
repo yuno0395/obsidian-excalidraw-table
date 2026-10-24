@@ -3,14 +3,21 @@
 
 import { Menu, setIcon } from "obsidian";
 import { t, MsgKey } from "./i18n";
-import { Align, CELL, OpName } from "./model";
-import { Tables, isCellSelection, modelOf, selectedCells, wholeTableSelected } from "./table";
+import { bounds, screenX, screenY, zoomOf } from "./geom";
+import { Align, OpName } from "./model";
+import { Tables, cellRects, isCellSelection, modelOf, selectedCells, wholeTableSelected } from "./table";
+import { CopyFormat } from "./text";
+
+type Run = (fn: (view: any) => Promise<unknown>) => void;
+
+// Nothing is shown over the canvas in view mode, while typing, or while something is dragged, resized or drawn.
+const busy = (st: any) =>
+  !st || st.viewModeEnabled || st.editingTextElement || st.selectedElementsAreBeingDragged || st.resizingElement || st.newElement;
 
 export class CellToolbar {
   private bar: HTMLElement | null = null;
 
-  constructor(private view: any, private tables: Tables, private run: (fn: (view: any) => Promise<unknown>) => void,
-    private copy: (fmt: "office" | "csv" | "md") => Promise<void>) {}
+  constructor(private view: any, private tables: Tables, private run: Run, private copy: (fmt: CopyFormat) => Promise<void>) {}
 
   destroy() { this.bar?.remove(); this.bar = null; }
 
@@ -19,25 +26,20 @@ export class CellToolbar {
   // Show the toolbar above the table of the selected cells (at the left of the selection), or hide it.
   place(st: any) {
     const api = this.view.excalidrawAPI;
-    if (!st || st.viewModeEnabled || st.editingTextElement || st.selectedElementsAreBeingDragged || st.resizingElement || st.newElement) return this.hide();
+    if (busy(st)) return this.hide();
     const { T, cells } = selectedCells(api); if (!T || !cells.length) return this.hide();
     const M = modelOf(api, T); if (!M || !isCellSelection(st, M, cells)) return this.hide();
     const ids = new Set(Object.keys(st.selectedElementIds || {}));
-    const all = api.getSceneElements().filter((e: any) => e.type === "rectangle" && e.customData?.[CELL]?.id === T);
-    const sel = all.filter((e: any) => ids.has(e.id));
-    if (!sel.length) return this.hide();
-    const z = st.zoom?.value ?? 1;
+    const all = cellRects(api, T), sel = bounds(all.filter((e: any) => ids.has(e.id))), box = bounds(all);
+    if (!sel || !box) return this.hide();
     // above the table (so it never hides a cell); below it if there is no room above
-    let x0 = Infinity, y0 = Infinity, y1 = -Infinity;
-    for (const e of sel) x0 = Math.min(x0, e.x);
-    for (const e of all) { y0 = Math.min(y0, e.y); y1 = Math.max(y1, e.y + e.height); }
     const one = cells.length === 1 ? cells[0] : null;
     const bar = this.build(cells.length > 1, !!one && ((one.rs || 1) > 1 || (one.cs || 1) > 1));
     bar.style.display = "flex";
     const h = bar.offsetHeight || 32;
-    let top = (y0 + st.scrollY) * z + st.offsetTop - h - 10;
-    if (top < st.offsetTop + 4) top = (y1 + st.scrollY) * z + st.offsetTop + 10;
-    placeFixed(bar, Math.max(st.offsetLeft + 4, (x0 + st.scrollX) * z + st.offsetLeft), top);
+    let top = screenY(st, box.y0) - h - 10;
+    if (top < st.offsetTop + 4) top = screenY(st, box.y1) + 10;
+    placeFixed(bar, Math.max(st.offsetLeft + 4, screenX(st, sel.x0)), top);
   }
 
   // The buttons depend on the selection (merge for several cells, unmerge for a merged cell); rebuilt only when that changes.
@@ -53,19 +55,20 @@ export class CellToolbar {
       borderRadius: "var(--radius-m, 6px)", boxShadow: "var(--shadow-s)", fontSize: "var(--font-ui-smaller, 12px)",
     });
     const tables = this.tables;
-    const button = (title: string, fn: (v: any) => Promise<unknown>, label: string, icon?: string) => {
-      const b = bar.createEl("button", { attr: { "aria-label": title } });
+    // a button with a text label or an icon; pressing it does not take the focus or the selection from the canvas
+    const button = (title: MsgKey, look: { label?: MsgKey; icon?: string }, onClick: (e: MouseEvent) => void) => {
+      const b = bar.createEl("button", { attr: { "aria-label": t(title) } });
       Object.assign(b.style, { padding: "2px 6px", height: "24px", fontSize: "inherit", boxShadow: "none" });
-      if (icon) setIcon(b, icon); else b.setText(label);
+      if (look.icon) setIcon(b, look.icon); else b.setText(t(look.label ?? title));
       b.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); });
-      b.addEventListener("click", (e) => {
-        e.preventDefault(); e.stopPropagation();
-        this.run(async (v) => { await fn(v); (v.contentEl.querySelector(".excalidraw") as HTMLElement | null)?.focus(); });
-      });
+      b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onClick(e); });
     };
-    const op = (name: OpName, title: MsgKey, label: MsgKey) => button(t(title), (v) => tables.reshape(v, tables.ops[name]), t(label));
+    // a command on the selected cells; the canvas gets the keyboard back afterwards
+    const command = (title: MsgKey, look: { label?: MsgKey; icon?: string }, fn: (v: any) => Promise<unknown>) =>
+      button(title, look, () => this.run(async (v) => { await fn(v); (v.contentEl.querySelector(".excalidraw") as HTMLElement | null)?.focus(); }));
+    const op = (name: OpName, title: MsgKey, label: MsgKey) => command(title, { label }, (v) => tables.reshape(v, tables.ops[name]));
+    const align = (a: Align, title: MsgKey, icon: string) => command(title, { icon }, (v) => tables.align(v, a));
     const gap = () => Object.assign(bar.createDiv().style, { width: "1px", alignSelf: "stretch", margin: "2px 3px", background: "var(--background-modifier-border)" });
-    const align = (a: Align, title: MsgKey, icon: string) => button(t(title), (v) => tables.align(v, a), "", icon);
     op("addRowAbove", "addRowAbove", "tbAbove");
     op("addRow", "addRow", "tbBelow");
     op("addColLeft", "addColLeft", "tbLeft");
@@ -81,14 +84,9 @@ export class CellToolbar {
     align("right", "alignRight", "align-right");
     gap();
     // copy the table out: a small menu of formats
-    const cp = bar.createEl("button", { attr: { "aria-label": t("copyTable") } });
-    Object.assign(cp.style, { padding: "2px 6px", height: "24px", fontSize: "inherit", boxShadow: "none" });
-    setIcon(cp, "clipboard-copy");
-    cp.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); });
-    cp.addEventListener("click", (e) => {
-      e.preventDefault(); e.stopPropagation();
+    button("copyTable", { icon: "clipboard-copy" }, (e) => {
       const menu = new Menu();
-      const item = (title: MsgKey, icon: string, fmt: "office" | "csv" | "md") =>
+      const item = (title: MsgKey, icon: string, fmt: CopyFormat) =>
         menu.addItem((i) => i.setTitle(t(title)).setIcon(icon).onClick(() => this.run(() => this.copy(fmt))));
       item("copyOffice", "table", "office");
       item("copyCsv", "file-spreadsheet", "csv");
@@ -115,7 +113,7 @@ export class StretchHandles {
   private els: { w: HTMLElement; h: HTMLElement; ghost: HTMLElement } | null = null;
   private drag: { T: string; dir: "w" | "h"; x0: number; y0: number; box: DOMRect; size: number } | null = null;
 
-  constructor(private view: any, private tables: Tables, private run: (fn: (view: any) => Promise<unknown>) => void) {}
+  constructor(private view: any, private tables: Tables, private run: Run) {}
 
   destroy() { if (this.els) { this.els.w.remove(); this.els.h.remove(); this.els.ghost.remove(); } this.els = null; }
 
@@ -125,19 +123,15 @@ export class StretchHandles {
   place(st: any) {
     if (this.drag) return;
     const api = this.view.excalidrawAPI;
-    if (!st || st.viewModeEnabled || st.editingTextElement || st.selectedElementsAreBeingDragged || st.resizingElement || st.newElement) return this.hide();
+    if (busy(st)) return this.hide();
     const T = wholeTableSelected(api); if (!T) return this.hide();
-    const all = api.getSceneElements().filter((e: any) => e.type === "rectangle" && e.customData?.[CELL]?.id === T);
-    if (!all.length) return this.hide();
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const e of all) { x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y); x1 = Math.max(x1, e.x + e.width); y1 = Math.max(y1, e.y + e.height); }
-    const z = st.zoom?.value ?? 1, sx = (v: number) => (v + st.scrollX) * z + st.offsetLeft, sy = (v: number) => (v + st.scrollY) * z + st.offsetTop;
+    const b = this.screenBox(T, st); if (!b) return this.hide();
     const { w, h } = this.build();
     w.dataset.t = T; h.dataset.t = T;
     w.style.display = "block"; h.style.display = "block";
     // just outside the edge, in the middle (clear of Excalidraw's own corner handles)
-    placeFixed(w, sx(x1) + 10, (sy(y0) + sy(y1)) / 2 - 14);
-    placeFixed(h, (sx(x0) + sx(x1)) / 2 - 14, sy(y1) + 10);
+    placeFixed(w, b.right + 10, b.y + b.height / 2 - 14);
+    placeFixed(h, b.x + b.width / 2 - 14, b.bottom + 10);
   }
 
   private build() {
@@ -166,13 +160,10 @@ export class StretchHandles {
   }
 
   // the table's box on screen
-  private screenBox(T: string): DOMRect | null {
-    const api = this.view.excalidrawAPI, st = api.getAppState(), z = st.zoom?.value ?? 1;
-    const all = api.getSceneElements().filter((e: any) => e.type === "rectangle" && e.customData?.[CELL]?.id === T);
-    if (!all.length) return null;
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const e of all) { x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y); x1 = Math.max(x1, e.x + e.width); y1 = Math.max(y1, e.y + e.height); }
-    return new DOMRect((x0 + st.scrollX) * z + st.offsetLeft, (y0 + st.scrollY) * z + st.offsetTop, (x1 - x0) * z, (y1 - y0) * z);
+  private screenBox(T: string, st = this.view.excalidrawAPI.getAppState()): DOMRect | null {
+    const b = bounds(cellRects(this.view.excalidrawAPI, T)); if (!b) return null;
+    const z = zoomOf(st);
+    return new DOMRect(screenX(st, b.x0), screenY(st, b.y0), (b.x1 - b.x0) * z, (b.y1 - b.y0) * z);
   }
 
   private start(e: PointerEvent, el: HTMLElement, dir: "w" | "h") {

@@ -1,6 +1,6 @@
 {
   "name": "obsidian-excalidraw-table",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Tables for Excalidraw in Obsidian: create by rows and columns, merge cells, drag to resize, images in cells.",
   "main": "main.js",
   "scripts": {

@@ -54,7 +54,7 @@ BRAT を使っている場合は、`yuno0395/obsidian-excalidraw-table` を足�
   - 書いている途中で Tab を押すと、文字を確定して次のセルの入力に移ります（Excel のように、Tab と文字を続けて打てます）。Shift + Tab は前のセルへ。
   - 最後のセルで Tab を押すと、下に行が増えてその行の最初のセルに移ります。
   - Tab で移ったセルにすでに文字があると、打った文字で置き換わります（Excel と同じ）。
-- **ボタン**：セルを選ぶと、表の上に「上に行・下に行・左に列・右に列・行を削除・列を削除・結合（または結合を解除）・寄せ」のボタンが出ます。
+- **ボタン**：セルを選ぶと、表の上に「上に行・下に行・左に列・右に列・行を削除・列を削除・結合（または結合を解除）・寄せ・コピー」のボタンが出ます。
 - **貼り付けで表を作る**：Excel・Google スプレッドシートなどでセルをコピーするか、Markdown の表をコピーして、キャンバスの上で Ctrl/Cmd + V。マウスのある場所に、中身に合わせた列の幅で表ができます。ふつうの文字として貼りたい時は Shift を押しながら貼り付けます（設定で切ることもできます）。
 - **画像を入れる**：キャンバスに置いた画像を、セルの上にドラッグして離します。表の外へドラッグすると、表から外れます。
 - **大きさを変える**：
@@ -126,7 +126,7 @@ Tables on the Excalidraw canvas in Obsidian, PowerPoint style. Requires the Exca
 - Tables are plain rectangles and text, so they appear in Excalidraw's PNG/SVG/PDF export.
 - The content is also stored as data in the drawing, so other tools can read it (`tools/read_tables.py`).
 
-**Install**: copy `main.js` and `manifest.json` from Releases (or build with `npm install && npm run build`) into `.obsidian/plugins/excalidraw-table/`, then enable it. See [INSTALL.md](INSTALL.md). Commands: Insert table, Add row above / below, Add column to the left / right, Delete row, Delete column, Merge cells, Unmerge cells, Header row on/off, Header column on/off, Align left / center / right, Copy table as Markdown, Copy table as tab-separated text.
+**Install**: copy `main.js` and `manifest.json` from Releases (or build with `npm install && npm run build`) into `.obsidian/plugins/excalidraw-table/`, then enable it. See [INSTALL.md](INSTALL.md). Commands: Insert table, Add row above / below, Add column to the left / right, Delete row, Delete column, Merge cells, Unmerge cells, Header row on/off, Header column on/off, Align left / center / right, Copy table for Excel / PowerPoint, Copy table as CSV, Copy table as Markdown.
 
 To select a cell, double-click the table (this enters the group and selects the cell); Shift-click to add cells.
 
@@ -135,7 +135,7 @@ To select a cell, double-click the table (this enters the group and selects the 
 ```
 npm install
 npm run build   # 型チェックと main.js の作成
-npm test        # 表の形の操作と、貼り付け・コピーの変換のテスト
+npm test        # 表の形の操作、貼り付け・コピーの変換、色、座標のテスト
 ```
 
 | ファイル | 役目 |
@@ -143,13 +143,23 @@ npm test        # 表の形の操作と、貼り付け・コピーの変換の�
 | `src/main.ts` | プラグイン本体（コマンド・設定・貼り付けの割り込み・図ごとの見張り役の取り付け） |
 | `src/view-hook.ts` | 図ごとの見張り役（操作の後の整え直し・Tab と矢印キー・タブ右上のアイコン） |
 | `src/toolbar.ts` | セルの上のボタンと、表の伸縮つまみ |
-| `src/table.ts` | 図の中の表（並べ直し・描く・作り直す・寄せ・伸縮） |
+| `src/table.ts` | 図の中の表（並べ直し・描く・作り直す・寄せ・伸縮・コピー用の書き出し） |
 | `src/model.ts` | 表のデータと、行・列の追加削除・結合（Obsidian に依らない。テストあり） |
 | `src/text.ts` | 貼り付けた文字から表へ、表から Markdown・タブ区切り・CSV・HTML へ（テストあり） |
 | `src/theme.ts` | カラーテーマ（色から線・見出し・本文・文字の色を決める。テストあり） |
+| `src/geom.ts` | 囲む枠の計算と、図の座標と画面の座標の変換（テストあり） |
 | `src/create-modal.ts` | 「表を作る」の画面 |
 | `src/settings.ts` | 設定 |
+| `src/i18n.ts`・`src/util.ts` | 表示する文（英語・日本語）、小さな道具 |
 
 ## License
 
 MIT
+
+このプラグインは個人が作ったもので、Excalidraw・Obsidian Excalidraw プラグイン・Obsidian の公式のものではなく、それらの作者とは関係ありません。
+Excalidraw や Excalidraw プラグインのコードは含んでおらず、Obsidian の中で動いている Excalidraw プラグインの公開された仕組み（ExcalidrawAutomate など）を呼び出して使います。
+`tools/read_tables.py` には [lz-string](https://github.com/pieroxy/lz-string)（MIT）の復元処理を Python に移したものが入っています。著作権表示とライセンス文は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にあります。
+
+This is an unofficial, independent plugin, not affiliated with Excalidraw, the Obsidian Excalidraw plugin or Obsidian.
+It contains no code from Excalidraw or the Excalidraw plugin; it calls the Excalidraw plugin's public API at run time.
+`tools/read_tables.py` contains a Python port of lz-string's decompression (MIT); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

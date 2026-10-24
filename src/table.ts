@@ -6,17 +6,25 @@
 
 import {
   Align, Anchor, CELL, Colors, Content, MINH, MODEL, Model, Op, OpName, TEXT,
-  TableError, anchors, cellAt, gap, isHeader, key, minH, minW, pad, scaleModel, structureOps, sum,
+  TableError, anchors, cellAt, copyModel, gap, isHeader, key, minH, minW, pad, scaleModel, structureOps, sum,
 } from "./model";
+import { bounds } from "./geom";
 import { ExportTable, fitColumns } from "./text";
 import { TableSettings } from "./settings";
-import { rnd, until, upd } from "./util";
+import { rnd, until, upd, withChanges } from "./util";
 
 // ---------- reading the scene ----------
+// a cell rectangle / an image in a cell of table T
+const isCellOf = (e: any, T: string) => e.type === "rectangle" && e.customData?.[CELL]?.id === T;
+const isImageOf = (e: any, T: string) => e.type === "image" && e.customData?.[CELL]?.id === T;
+
+// the cell rectangles of table T
+export const cellRects = (api: any, T: string): any[] => api.getSceneElements().filter((e: any) => isCellOf(e, T));
+
 function parts(api: any, T: string) {
   const els = api.getSceneElements();
-  const rects = els.filter((e: any) => e.type === "rectangle" && e.customData?.[CELL]?.id === T);
-  const imgs = els.filter((e: any) => e.type === "image" && e.customData?.[CELL]?.id === T);
+  const rects = els.filter((e: any) => isCellOf(e, T));
+  const imgs = els.filter((e: any) => isImageOf(e, T));
   const head = rects.find((e: any) => e.customData[CELL].r === 0 && e.customData[CELL].c === 0 && e.customData[MODEL]);
   const byContainer = new Map<string, any>();
   for (const e of els) if (e.type === "text" && e.containerId) byContainer.set(e.containerId, e);
@@ -109,6 +117,14 @@ export class Tables {
     if (view.excalidrawAPI.getAppState().viewModeEnabled) throw new TableError(this.msg("viewMode"));
   }
 
+  // The table and cells a command works on (the drawing must be in edit mode, and cells selected).
+  private target(view: any) {
+    this.writable(view);
+    const api = view.excalidrawAPI, { T, cells } = selectedCells(api);
+    if (!T) throw new TableError(this.msg("selectCell"));
+    return { api, T, cells };
+  }
+
   // ---------- layout ----------
   // Reads what the user changed (dragged sizes, typed text), then sets column widths, row heights and positions.
   // opt.resized: whether the last pointer action was a resize, when known (undefined: guess from the shapes).
@@ -116,7 +132,7 @@ export class Tables {
   layout(view: any, T: string, opt: { fromModel?: boolean; resized?: boolean; scaled?: boolean } = {}) {
     const api = view.excalidrawAPI;
     let P = parts(api, T); if (!P.head) return;
-    const H: Model = P.head.customData[MODEL], M: Model = JSON.parse(JSON.stringify(H));
+    const H: Model = P.head.customData[MODEL], M = copyModel(H);
     const A = anchors(M).sort((a, b) => b.cs * b.rs - a.cs * a.rs);   // merged cells first, so single cells win
     const frameId = P.head.frameId ?? null, cellColor = this.colors(M).cell;
     let ox = P.head.x, oy = P.head.y;
@@ -144,10 +160,10 @@ export class Tables {
     }
     const X = (j: number) => ox + sum(M.cols, 0, j);
     // 2) widths, font size and alignment; re-wrap text
-    const m1 = new Map(P.els.map((e: any) => [e.id, e])), al: Record<string, Align> = {}, fr: Record<string, number> = {};
+    const ch: any[] = [], al: Record<string, Align> = {}, fr: Record<string, number> = {};
     for (const a of A) {
       const e = P.rectAt(a.r, a.c); if (!e) continue;
-      m1.set(e.id, upd(e, { x: X(a.c), width: sum(M.cols, a.c, a.cs), frameId,
+      ch.push(upd(e, { x: X(a.c), width: sum(M.cols, a.c, a.cs), frameId,
         ...(e.backgroundColor === "transparent" ? { backgroundColor: cellColor, fillStyle: "solid" } : {}) }));
       const b = P.bound(e), k = key(a.r, a.c);
       al[k] = alignOf(e, b);
@@ -164,9 +180,9 @@ export class Tables {
         const tc = textColor(M, a.r, a.c); if (tc) p.strokeColor = tc;
       }
       if (b.frameId !== frameId) p.frameId = frameId;
-      if (Object.keys(p).length) m1.set(b.id, upd(b, p));
+      if (Object.keys(p).length) ch.push(upd(b, p));
     }
-    api.updateScene({ elements: [...m1.values()] });
+    api.updateScene({ elements: withChanges(P.els, ch) });
     const rectIds = new Set(P.rects.map((r: any) => r.id));
     api.updateContainerSize(api.getSceneElements().filter((e: any) => rectIds.has(e.id)));
     // 3) row height = max(height set by the user, content); a merged cell adds what it lacks to its last row
@@ -187,23 +203,23 @@ export class Tables {
     const Y = (i: number) => oy + sum(M.rowH, 0, i);
     // 4) positions; the model is stored on the top-left cell
     M.cells = snapshot(P, M); M.imgs = {};
-    const m2 = new Map(api.getSceneElements().map((e: any) => [e.id, e]));
+    const els2 = api.getSceneElements(), now = new Map<string, any>(els2.map((e: any) => [e.id, e])), ch2: any[] = [];
     for (const { a, th, ims, sz } of info) {
       let y = Y(a.r) + PADm + th + (th ? GAPm : 0);
       ims.forEach((im: any, n: number) => {
         const g = { x: X(a.c) + PADm, y, width: sz[n][0], height: sz[n][1] };
         M.imgs![im.id] = g;
-        m2.set(im.id, upd(m2.get(im.id), { ...g, frameId }));
+        ch2.push(upd(now.get(im.id), { ...g, frameId }));
         y += sz[n][1] + GAPm;
       });
     }
     for (const { a, e } of info) {
       const head = a.r === 0 && a.c === 0;
-      m2.set(e.id, upd(m2.get(e.id), { x: X(a.c), y: Y(a.r), width: sum(M.cols, a.c, a.cs), height: sum(M.rowH, a.r, a.rs),
+      ch2.push(upd(now.get(e.id), { x: X(a.c), y: Y(a.r), width: sum(M.cols, a.c, a.cs), height: sum(M.rowH, a.r, a.rs),
         customData: { ...e.customData, [CELL]: { ...e.customData[CELL], rs: a.rs, cs: a.cs, al: al[key(a.r, a.c)], fr: fr[key(a.r, a.c)] }, ...(head ? { [MODEL]: M } : {}) } }));
     }
     // images in front of the cells (so a rebuilt cell's fill does not hide them)
-    const arr = [...m2.values()], isImg = (e: any) => e.type === "image" && e.customData?.[CELL]?.id === T;
+    const arr = withChanges(els2, ch2), isImg = (e: any) => isImageOf(e, T);
     api.updateScene({ elements: [...arr.filter((e) => !isImg(e)), ...arr.filter(isImg)] });
     api.updateContainerSize(api.getSceneElements().filter((e: any) => rectIds.has(e.id)));
   }
@@ -212,10 +228,9 @@ export class Tables {
   // Not when the user is inside the table (a cell of a one-cell table was resized, which is a cell resize).
   private wholeScale(api: any, P: ReturnType<typeof parts>, H: Model, A: Anchor[]) {
     if (api.getAppState().editingGroupId && api.getAppState().editingGroupId === groupsOf(P.head)[0]) return null;
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const e of P.rects) { x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y); x1 = Math.max(x1, e.x + e.width); y1 = Math.max(y1, e.y + e.height); }
-    const W = sum(H.cols, 0, H.nC), Hh = sum(H.rowH, 0, H.nR);
-    if (!(W > 0 && Hh > 0) || !Number.isFinite(x0)) return null;
+    const B = bounds(P.rects), W = sum(H.cols, 0, H.nC), Hh = sum(H.rowH, 0, H.nR);
+    if (!B || !(W > 0 && Hh > 0)) return null;
+    const { x0, y0, x1, y1 } = B;
     const sx = (x1 - x0) / W, sy = (y1 - y0) / Hh;
     if (Math.abs(sx - 1) < 0.005 && Math.abs(sy - 1) < 0.005) return null;
     const tol = (v: number) => Math.max(1.5, v * 0.01);
@@ -230,10 +245,9 @@ export class Tables {
   // How much the table was scaled, measured from what text cannot change: cell widths, and where the cells start
   // (Excalidraw may grow a cell's height to fit its text while it resizes the table).
   private measureScale(P: ReturnType<typeof parts>, H: Model) {
-    if (!P.rects.length) return null;
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity;
-    for (const e of P.rects) { x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y); x1 = Math.max(x1, e.x + e.width); }
-    const W = sum(H.cols, 0, H.nC); if (!(W > 0)) return null;
+    const B = bounds(P.rects), W = sum(H.cols, 0, H.nC);
+    if (!B || !(W > 0)) return null;
+    const { x0, y0, x1 } = B;
     const sx = (x1 - x0) / W;
     // rows: where each row starts (median over the cells, so one odd cell does not count); one row: the lowest cell
     const ys: number[] = [];
@@ -248,12 +262,11 @@ export class Tables {
   scale(view: any, T: string, sx: number, sy: number) {
     this.writable(view);
     const api = view.excalidrawAPI, P = parts(api, T); if (!P.head) return;
-    const M: Model = JSON.parse(JSON.stringify(P.head.customData[MODEL]));
-    const k = scaleModel(M, sx, sy);
-    const m = new Map(P.els.map((e: any) => [e.id, e]));
-    m.set(P.head.id, upd(P.head, { customData: { ...P.head.customData, [MODEL]: M } }));
-    for (const im of P.imgs) m.set(im.id, upd(im, { width: im.width * k, height: im.height * k }));   // images scale with the text
-    api.updateScene({ elements: [...m.values()] });
+    const M = copyModel(P.head.customData[MODEL]), k = scaleModel(M, sx, sy);
+    api.updateScene({ elements: withChanges(P.els, [
+      upd(P.head, { customData: { ...P.head.customData, [MODEL]: M } }),
+      ...P.imgs.map((im: any) => upd(im, { width: im.width * k, height: im.height * k })),   // images scale with the text
+    ]) });
     this.layout(view, T, { fromModel: true });
   }
 
@@ -305,11 +318,7 @@ export class Tables {
         changed.add(cur.id);
       }
     }
-    if (ups.length) {
-      const m = new Map(els.map((e: any) => [e.id, e]));
-      ups.forEach((u) => m.set(u.id, u));
-      api.updateScene({ elements: [...m.values()] });
-    }
+    if (ups.length) api.updateScene({ elements: withChanges(els, ups) });
     return changed;
   }
 
@@ -381,11 +390,9 @@ export class Tables {
   // then select the cell the command points at (so the next command can follow without clicking).
   // Returns the ids of the selected cells.
   async reshape(view: any, fn: Op): Promise<string[]> {
-    this.writable(view);
-    const api = view.excalidrawAPI, { T, cells } = selectedCells(api);
-    if (!T) throw new TableError(this.msg("selectCell"));
+    const { api, T, cells } = this.target(view);
     this.layout(view, T);
-    const P = parts(api, T), M: Model = JSON.parse(JSON.stringify(P.head.customData[MODEL]));
+    const P = parts(api, T), M = copyModel(P.head.customData[MODEL]);
     const C = this.colors(M);
     M.colors = C;   // a table made before colours were kept: it keeps the colours it has now
     const content: Content = {};
@@ -404,7 +411,7 @@ export class Tables {
     for (const [k, v] of Object.entries(N.content)) for (const id of v.imgs || []) imgAt[id] = k;
     api.updateScene({ elements: api.getSceneElements().map((e: any) => {
       if (old.has(e.id)) return upd(e, { isDeleted: true });
-      if (e.type === "image" && e.customData?.[CELL]?.id === T) {
+      if (isImageOf(e, T)) {
         const k = imgAt[e.id]; if (!k) return upd(e, { isDeleted: true });
         const [r, c] = k.split(",").map(Number);
         return upd(e, { customData: { ...e.customData, [CELL]: { ...e.customData[CELL], r, c } } });
@@ -418,17 +425,15 @@ export class Tables {
 
   // Set the alignment of the selected cells (kept on the cell, so it survives adding rows and merging).
   async align(view: any, al: Align) {
-    this.writable(view);
-    const api = view.excalidrawAPI, { T, cells } = selectedCells(api);
-    if (!T) throw new TableError(this.msg("selectCell"));
-    const P = parts(api, T), m = new Map(P.els.map((e: any) => [e.id, e]));
+    const { api, T, cells } = this.target(view);
+    const P = parts(api, T), ch: any[] = [];
     for (const n of cells) {
       const e = P.rectAt(n.r, n.c); if (!e) continue;
-      m.set(e.id, upd(e, { customData: { ...e.customData, [CELL]: { ...e.customData[CELL], al } } }));
+      ch.push(upd(e, { customData: { ...e.customData, [CELL]: { ...e.customData[CELL], al } } }));
       const b = P.bound(e);
-      if (b) m.set(b.id, upd(b, { textAlign: al, customData: { ...(b.customData || {}), [TEXT]: true } }));
+      if (b) ch.push(upd(b, { textAlign: al, customData: { ...(b.customData || {}), [TEXT]: true } }));
     }
-    api.updateScene({ elements: [...m.values()] });
+    api.updateScene({ elements: withChanges(P.els, ch) });
     this.layout(view, T);
   }
 
