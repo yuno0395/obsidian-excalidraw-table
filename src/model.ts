@@ -16,7 +16,8 @@ export const MAX_SIZE = 100;   // most rows / columns the insert dialog accepts
 export type Align = "left" | "center" | "right";
 export type Anchor = { r: number; c: number; rs: number; cs: number };   // a cell: top-left position and span
 export type Merge = Anchor;
-export type Colors = { header: string; cell: string; stroke: string };
+// text / headerText: text colour in body / header cells (tables made before themes: the line colour)
+export type Colors = { header: string; cell: string; stroke: string; text?: string; headerText?: string };
 
 export interface Model {
   id: string;

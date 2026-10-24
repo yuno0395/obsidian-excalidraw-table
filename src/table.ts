@@ -8,7 +8,7 @@ import {
   Align, Anchor, CELL, Colors, Content, MINH, MODEL, Model, Op, OpName, TEXT,
   TableError, anchors, cellAt, gap, isHeader, key, minH, minW, pad, scaleModel, structureOps, sum,
 } from "./model";
-import { fitColumns } from "./text";
+import { ExportTable, fitColumns } from "./text";
 import { TableSettings } from "./settings";
 import { rnd, until, upd } from "./util";
 
@@ -32,6 +32,9 @@ export const tablesIn = (api: any): string[] =>
 
 // the table model, as last laid out
 export const modelOf = (api: any, T: string): Model | undefined => parts(api, T).head?.customData?.[MODEL];
+
+// Text colour of a cell from the table's colours (none for tables made before themes: Excalidraw's choice stays).
+const textColor = (M: Model, r: number, c: number) => (isHeader(M, r, c) ? M.colors?.headerText : M.colors?.text);
 
 // The groups the table's elements belong to, innermost (the table's own group) first.
 // A table the user grouped with other shapes keeps that outer group too.
@@ -149,7 +152,11 @@ export class Tables {
       if (!b) continue;
       const p: any = {};
       if (b.fontSize !== M.fs) p.fontSize = M.fs;
-      if (!b.customData?.[TEXT]) Object.assign(p, { textAlign: al[k], verticalAlign: "top", customData: { ...(b.customData || {}), [TEXT]: true } });
+      if (!b.customData?.[TEXT]) {
+        // text just typed into the cell: set it up (alignment; the table's text colour, as Excalidraw uses its current colour)
+        Object.assign(p, { textAlign: al[k], verticalAlign: "top", customData: { ...(b.customData || {}), [TEXT]: true } });
+        const tc = textColor(M, a.r, a.c); if (tc) p.strokeColor = tc;
+      }
       if (b.frameId !== frameId) p.frameId = frameId;
       if (Object.keys(p).length) m1.set(b.id, upd(b, p));
     }
@@ -332,7 +339,10 @@ export class Tables {
       ea.addAppendUpdateCustomData(id, { [CELL]: { id: M.id, r: a.r, c: a.c, rs: a.rs, cs: a.cs, al }, ...(a.r === 0 && a.c === 0 ? { [MODEL]: M } : {}) });
       ids.push(id);
       const bt = ea.getElements().find((e: any) => e.containerId === id);
-      if (bt) { ids.push(bt.id); ea.addAppendUpdateCustomData(bt.id, { [TEXT]: true }); }
+      if (bt) {
+        ids.push(bt.id); ea.addAppendUpdateCustomData(bt.id, { [TEXT]: true });
+        const tc = content[k]?.bg ? undefined : textColor(M, a.r, a.c); if (tc) bt.strokeColor = tc;
+      }
     }
     ea.addToGroup(ids);
     ea.getElements().forEach((e: any) => { if (groups?.length) e.groupIds = [...groups]; if (frameId) e.frameId = frameId; });
@@ -343,7 +353,8 @@ export class Tables {
   }
 
   // A new table. rows: text of each cell (from a paste); at: top-left corner in the drawing (else the middle of the screen).
-  async create(view: any, nC: number, nR: number, header: boolean, opt: { rows?: string[][]; at?: { x: number; y: number } } = {}) {
+  // colors: the table's colours (a theme); else the default colours from the settings.
+  async create(view: any, nC: number, nR: number, header: boolean, opt: { rows?: string[][]; at?: { x: number; y: number }; colors?: Colors } = {}) {
     this.writable(view);
     const api = view.excalidrawAPI, s = this.settings(), st = api.getAppState();
     const fr = api.getSceneElements().find((e: any) => e.type === "frame" && st.selectedElementIds?.[e.id]);
@@ -351,7 +362,7 @@ export class Tables {
     const w = sum(cols, 0, nC), h = nR * MINH, z = st.zoom?.value ?? 1;
     const x = fr ? fr.x + 20 : opt.at ? opt.at.x : -st.scrollX + st.width / 2 / z - w / 2;
     const y = fr ? fr.y + 30 : opt.at ? opt.at.y : -st.scrollY + st.height / 2 / z - h / 2;
-    const M: Model = { id: "ext" + rnd().toString(36), fs: s.fontSize, nR, nC, header, headerCol: false, colors: this.colors(),
+    const M: Model = { id: "ext" + rnd().toString(36), fs: s.fontSize, nR, nC, header, headerCol: false, colors: opt.colors ?? this.colors(),
       cols, rowMin: Array(nR).fill(0), rowH: Array(nR).fill(MINH), merges: [] };
     const content: Content = {};
     opt.rows?.forEach((row, r) => row.forEach((text, c) => { if (text) content[key(r, c)] = { text, imgs: [] }; }));
@@ -414,12 +425,21 @@ export class Tables {
     this.layout(view, T);
   }
 
-  // The cells of the selected table, as text (see Model.cells).
-  cellsText(view: any): (string | null)[][] {
+  // The selected table for copying out: its cells as text (see Model.cells), and with colours and spans for HTML.
+  exportTable(view: any): { cells: (string | null)[][]; table: ExportTable } {
     const api = view.excalidrawAPI, { T } = selectedCells(api);
     if (!T) throw new TableError(this.msg("selectTable"));
     if (!api.getAppState().viewModeEnabled) this.layout(view, T);
-    return modelOf(api, T)?.cells ?? [];
+    const P = parts(api, T), M: Model | undefined = P.head?.customData?.[MODEL];
+    if (!M) throw new TableError(this.msg("selectTable"));
+    const cells = M.cells ?? snapshot(P, M), C = this.colors(M);
+    const table: ExportTable = { nR: M.nR, nC: M.nC, cols: M.cols, stroke: C.stroke, fontSize: M.fs, cells: [] };
+    for (const a of anchors(M)) {
+      const e = P.rectAt(a.r, a.c), b = P.bound(e);
+      table.cells.push({ ...a, text: (cells[a.r]?.[a.c] ?? "").replace(/<br>/g, "\n"), bg: e?.backgroundColor,
+        color: b?.strokeColor ?? C.text ?? C.stroke, align: alignOf(e, b) });
+    }
+    return { cells, table };
   }
 
   // After each pointer up (end of a drag, a click after typing): adopt dropped images, then lay out changed tables.

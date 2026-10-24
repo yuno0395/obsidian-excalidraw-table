@@ -11,6 +11,7 @@ export interface Host {
   tables: Tables;
   run(view: any, fn: (view: any) => Promise<unknown>): void;
   openCreate(view: any): void;
+  copy(view: any, fmt: "office" | "csv" | "md"): Promise<void>;
 }
 
 // queued keys during a hop: plain text, or one of these
@@ -33,7 +34,7 @@ export class ViewHook {
 
   constructor(private host: Host, private view: any) {
     const api = view.excalidrawAPI, tables = host.tables, run = (fn: (v: any) => Promise<unknown>) => host.run(view, fn);
-    this.toolbar = new CellToolbar(view, tables, run);
+    this.toolbar = new CellToolbar(view, tables, run, (fmt) => host.copy(view, fmt));
     this.handles = new StretchHandles(view, tables, run);
     // "Insert table" icon in the tab header (Obsidian's own view actions, so it does not depend on Excalidraw's toolbar)
     if (typeof view.addAction === "function") {

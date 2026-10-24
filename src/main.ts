@@ -15,10 +15,12 @@ import { t, MsgKey } from "./i18n";
 import { OpName, TableError } from "./model";
 import { DEFAULT_SETTINGS, TableSettingTab, TableSettings } from "./settings";
 import { Tables } from "./table";
-import { parseTable, toMarkdown, toTsv } from "./text";
+import { parseTable, toCsv, toHtml, toMarkdown, toTsv } from "./text";
+import { colorsOf } from "./theme";
 import { ViewHook } from "./view-hook";
 
 const EXCALIDRAW = "obsidian-excalidraw-plugin";
+export type CopyFormat = "office" | "csv" | "md";
 
 export default class ExcalidrawTablePlugin extends Plugin {
   settings: TableSettings;
@@ -28,6 +30,7 @@ export default class ExcalidrawTablePlugin extends Plugin {
 
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings.themes = [...(this.settings.themes || [])];
     this.tables = new Tables((view) => this.ea(view), () => this.settings, (k) => t(k as MsgKey));
 
     const cmd = (id: string, name: MsgKey, run: (view: any) => Promise<unknown>) =>
@@ -54,8 +57,9 @@ export default class ExcalidrawTablePlugin extends Plugin {
     cmd("align-left", "alignLeft", async (v) => this.tables.align(v, "left"));
     cmd("align-center", "alignCenter", async (v) => this.tables.align(v, "center"));
     cmd("align-right", "alignRight", async (v) => this.tables.align(v, "right"));
+    cmd("copy-tsv", "copyOffice", (v) => this.copy(v, "office"));   // (id kept from the tab-separated copy it replaces)
+    cmd("copy-csv", "copyCsv", (v) => this.copy(v, "csv"));
     cmd("copy-markdown", "copyMd", (v) => this.copy(v, "md"));
-    cmd("copy-tsv", "copyTsv", (v) => this.copy(v, "tsv"));
 
     this.addSettingTab(new TableSettingTab(this.app, this));
 
@@ -75,7 +79,13 @@ export default class ExcalidrawTablePlugin extends Plugin {
 
   async saveSettings() { await this.saveData(this.settings); }
 
-  openCreate(view: any) { new CreateModal(this.app, (c, r, h) => this.tables.create(view, c, r, h)).open(); }
+  openCreate(view: any) { new CreateModal(this.app, this, (c, r, h, colors) => this.tables.create(view, c, r, h, { colors })).open(); }
+
+  // colours of the theme picked last (for tables made by pasting)
+  private lastColors() {
+    const s = this.settings;
+    return colorsOf(s.lastTheme, { header: s.headerColor, cell: s.cellColor, stroke: s.strokeColor });
+  }
 
   run(view: any, fn: (view: any) => Promise<unknown>) {
     let p: Promise<unknown>;
@@ -83,10 +93,26 @@ export default class ExcalidrawTablePlugin extends Plugin {
     p.catch((e) => new Notice(e instanceof TableError ? e.message : `Excalidraw Table: ${e?.message ?? e}`));
   }
 
-  private async copy(view: any, fmt: "md" | "tsv") {
-    const cells = this.tables.cellsText(view);
-    await navigator.clipboard.writeText(fmt === "md" ? toMarkdown(cells) : toTsv(cells));
-    new Notice(t("copied"));
+  // Copy the selected table: for Excel / PowerPoint (an HTML table, with tab-separated text for plain editors), CSV, or Markdown.
+  async copy(view: any, fmt: CopyFormat) {
+    const { cells, table } = this.tables.exportTable(view);
+    if (fmt === "office") {
+      const html = toHtml(table), text = toTsv(cells);
+      try {
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        })]);
+      } catch {
+        // no rich clipboard here: Electron's own clipboard, else plain text
+        const electron = (window as any).require?.("electron");
+        if (electron?.clipboard?.write) electron.clipboard.write({ html, text });
+        else await navigator.clipboard.writeText(text);
+      }
+    } else {
+      await navigator.clipboard.writeText(fmt === "csv" ? toCsv(cells) : toMarkdown(cells));
+    }
+    new Notice(t(fmt === "office" ? "copiedOffice" : fmt === "csv" ? "copiedCsv" : "copied"));
   }
 
   private excalidraw(): any { return (this.app as any).plugins?.plugins?.[EXCALIDRAW]; }
@@ -120,7 +146,7 @@ export default class ExcalidrawTablePlugin extends Plugin {
           if (rows) {
             const at = view._exTablePointer ?? data.pointerPosition;
             const pos = at && Number.isFinite(at.x) && Number.isFinite(at.y) ? { x: at.x, y: at.y } : undefined;
-            this.run(view, (v) => this.tables.create(v, rows[0].length, rows.length, true, { rows, at: pos }));
+            this.run(view, (v) => this.tables.create(v, rows[0].length, rows.length, true, { rows, at: pos, colors: this.lastColors() }));
             return false;
           }
         }

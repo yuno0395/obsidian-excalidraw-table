@@ -5,7 +5,8 @@ Obsidian の Excalidraw のキャンバスに、PowerPoint のような表を作
 
 - Excalidraw のタブ右上の表のアイコンから、マス目をなぞって大きさを選ぶか、列数と行数を入れて表を作る（1行目は見出しとして塗る）
 - Excel やスプレッドシートからコピーしたセル、Markdown の表を貼り付けると、そのまま表になる
-- 表を Markdown やタブ区切り（Excel 用）でコピーできる
+- 表を作る時にカラーテーマを選べる（好きな色を線か背景に使う。テーマとして保存もできる）
+- 表をコピーして、Excel・PowerPoint・Word に表のまま（色・結合も）貼り付けられる。CSV・Markdown でもコピーできる
 - セルに直接文字を書く。Enter で改行、Tab で次のセルへ（最後のセルで Tab を押すと行が増える）
 - 矢印キーでセルを移り、Shift + 矢印で範囲を選ぶ
 - セルを選ぶと表の上にボタンが出て、行・列の追加と削除、結合、文字の寄せがその場でできる
@@ -41,7 +42,8 @@ BRAT を使っている場合は、`yuno0395/obsidian-excalidraw-table` を足�
 | セルの結合を解除 | 結合したセルを元のマスに戻す。中身は左上のマスに残る |
 | 見出しの行を切り替え・見出しの列を切り替え | 1行目・1列目を見出しの色で塗る／やめる |
 | 左寄せ・中央寄せ・右寄せ | 選んだセルの文字の寄せ。行や列を足しても、結合しても残る |
-| 表を Markdown でコピー・表をタブ区切りでコピー（Excel 用） | 選んだ表（またはその中のセル）の中身をクリップボードに入れる |
+| 表を Excel・PowerPoint 用にコピー | 選んだ表（またはその中のセル）を、色・線の色・結合・寄せ・セルの中の改行ごとクリップボードに入れる。Excel・PowerPoint・Word・Google スプレッドシートに表として貼り付けられる（メモ帳などにはタブ区切りの文字で入る） |
+| 表を CSV でコピー・表を Markdown でコピー | 中身を CSV・Markdown の表の文字でクリップボードに入れる |
 
 - **セルを選ぶ**：表は1つのグループです。クリックすると表全体が選ばれます。セルをダブルクリックすると、表の中に入ってそのセルが選ばれます。Shift を押しながらクリックすると、セルを足して選べます。
 - **キーボード**（セルを選んでいる時）：
@@ -60,6 +62,14 @@ BRAT を使っている場合は、`yuno0395/obsidian-excalidraw-table` を足�
   - 表全体を選んで角をドラッグすると、表全体が縦横同じ割合で伸び縮みします。文字の大きさ・セルの余白も同じ割合で変わるので、小さくしても見た目の釣り合いは変わりません。
   - 表全体を選ぶと、表の右の辺と下の辺の真ん中に紫のつまみが出ます。右のつまみで横だけ、下のつまみで縦だけ伸び縮みします。文字の大きさは、縦と横の小さい方の割合に合わせます（横だけ広げても文字はそのまま、横だけ狭めると文字も小さくなって収まる）。
   - 行の高さは、中身より低くはなりません。ドラッグで高くした行はその高さを保ち、それ以外の行は中身に合わせて伸び縮みします。
+
+- **色（カラーテーマ）**：「表を作る」の画面の「色」で、見本から色を選ぶか「好きな色」で決め、「色の使い方」を選びます。
+  - 線：線をその色にし、見出しは薄い同じ系統の色。
+  - 塗り：見出しをその色で塗り、本文は薄い同じ系統の色。見出しの文字は、塗った色に合わせて白か黒になります。
+  - マス目の見本がその色になるので、作る前に見た目が分かります。
+  - 「テーマとして保存」で名前を付けて保存すると、次から見本に並びます。保存したテーマは右クリックか、設定の「保存したテーマ」で消せます。
+  - 最後に選んだ色は覚えていて、次に作る表と、貼り付けで作る表に使います。
+- **コピー**：セルを選ぶと出るボタンの右端（クリップボードのアイコン）から、Excel・PowerPoint 用／CSV／Markdown を選べます。
 
 設定で、新しく作る表の列の幅・文字の大きさ・見出しとセルと線の色、貼り付けで表を作るかどうかを変えられます（色を変えても、すでにある表はその表の色のままです）。
 
@@ -100,7 +110,8 @@ Tables on the Excalidraw canvas in Obsidian, PowerPoint style. Requires the Exca
 
 - Insert a table from the table icon in the Excalidraw tab header (or the command), by pointing at a size grid or by columns and rows (the first row is shaded as a header).
 - Paste cells copied from Excel / a spreadsheet, or a Markdown table, to make a table (Shift-paste for plain text).
-- Copy a table as Markdown or as tab-separated text for Excel.
+- Colour themes when inserting: a colour used for the lines or the fill, saved as named themes.
+- Copy a table for Excel / PowerPoint / Word (pastes as a real table with colours and merged cells), or as CSV or Markdown.
 - Type into cells directly; Enter for a line break, Tab to the next cell (Tab in the last cell adds a row).
 - Arrow keys move between cells; Shift + arrows select a range.
 - Selecting cells shows a toolbar above the table: add rows/columns on any side, delete, merge/unmerge, align.
@@ -130,7 +141,8 @@ npm test        # 表の形の操作と、貼り付け・コピーの変換の�
 | `src/toolbar.ts` | セルの上のボタンと、表の伸縮つまみ |
 | `src/table.ts` | 図の中の表（並べ直し・描く・作り直す・寄せ・伸縮） |
 | `src/model.ts` | 表のデータと、行・列の追加削除・結合（Obsidian に依らない。テストあり） |
-| `src/text.ts` | 貼り付けた文字から表へ、表から Markdown・タブ区切りへ（テストあり） |
+| `src/text.ts` | 貼り付けた文字から表へ、表から Markdown・タブ区切り・CSV・HTML へ（テストあり） |
+| `src/theme.ts` | カラーテーマ（色から線・見出し・本文・文字の色を決める。テストあり） |
 | `src/create-modal.ts` | 「表を作る」の画面 |
 | `src/settings.ts` | 設定 |
 

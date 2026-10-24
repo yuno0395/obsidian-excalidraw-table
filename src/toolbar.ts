@@ -1,7 +1,7 @@
 // Things drawn over the canvas: the toolbar shown above a table while cells are selected,
 // and the stretch handles shown on a selected table.
 
-import { setIcon } from "obsidian";
+import { Menu, setIcon } from "obsidian";
 import { t, MsgKey } from "./i18n";
 import { Align, CELL, OpName } from "./model";
 import { Tables, isCellSelection, modelOf, selectedCells, wholeTableSelected } from "./table";
@@ -9,7 +9,8 @@ import { Tables, isCellSelection, modelOf, selectedCells, wholeTableSelected } f
 export class CellToolbar {
   private bar: HTMLElement | null = null;
 
-  constructor(private view: any, private tables: Tables, private run: (fn: (view: any) => Promise<unknown>) => void) {}
+  constructor(private view: any, private tables: Tables, private run: (fn: (view: any) => Promise<unknown>) => void,
+    private copy: (fmt: "office" | "csv" | "md") => Promise<void>) {}
 
   destroy() { this.bar?.remove(); this.bar = null; }
 
@@ -78,6 +79,22 @@ export class CellToolbar {
     align("left", "alignLeft", "align-left");
     align("center", "alignCenter", "align-center");
     align("right", "alignRight", "align-right");
+    gap();
+    // copy the table out: a small menu of formats
+    const cp = bar.createEl("button", { attr: { "aria-label": t("copyTable") } });
+    Object.assign(cp.style, { padding: "2px 6px", height: "24px", fontSize: "inherit", boxShadow: "none" });
+    setIcon(cp, "clipboard-copy");
+    cp.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); });
+    cp.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const menu = new Menu();
+      const item = (title: MsgKey, icon: string, fmt: "office" | "csv" | "md") =>
+        menu.addItem((i) => i.setTitle(t(title)).setIcon(icon).onClick(() => this.run(() => this.copy(fmt))));
+      item("copyOffice", "table", "office");
+      item("copyCsv", "file-spreadsheet", "csv");
+      item("copyMd", "file-text", "md");
+      menu.showAtMouseEvent(e);
+    });
     this.view.contentEl.appendChild(bar);
     this.bar = bar;
     return bar;

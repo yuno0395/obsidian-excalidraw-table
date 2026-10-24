@@ -1,7 +1,7 @@
 // Table <-> text: reading pasted text, writing Markdown / tab-separated text, sizing columns for text.
 // Pure functions (tested in test/text.test.ts).
 
-import { PAD } from "./model";
+import { Align, PAD } from "./model";
 import { maxOf } from "./util";
 
 // Tab-separated text (Excel, Google Sheets, Numbers) or a Markdown table -> rows of cell texts (all rows the same length).
@@ -94,4 +94,42 @@ export function fitColumns(rows: string[][], nC: number, fontSize: number, colWi
     for (const r of rows) for (const line of (r[c] || "").split("\n")) w = Math.max(w, textWidth(line, fontSize));
     return Math.round(Math.min(Math.max(w + 2 * PAD + 4, 80), hi));
   });
+}
+
+// CSV (RFC 4180): fields with a comma, quote or line break are quoted; lines end with CRLF (what Excel expects)
+export function toCsv(cells: (string | null)[][]): string {
+  const q = (s: string | null) => {
+    const v = (s ?? "").replace(/<br>/g, "\n");
+    return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  };
+  return cells.map((r) => r.map(q).join(",")).join("\r\n") + "\r\n";
+}
+
+// ---------- HTML table, for pasting into Excel, PowerPoint, Word, Google Sheets... ----------
+export type ExportCell = { r: number; c: number; rs: number; cs: number; text: string; bg?: string; color?: string; align?: Align };
+export interface ExportTable { nR: number; nC: number; cols: number[]; stroke: string; fontSize: number; cells: ExportCell[] }
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// Merged cells become colspan / rowspan; colours, alignment and column widths are kept; a line break stays inside its cell
+// (Excel needs the mso style on <br> for that).
+export function toHtml(T: ExportTable): string {
+  const byRow = new Map<number, ExportCell[]>();
+  for (const c of T.cells) { if (!byRow.has(c.r)) byRow.set(c.r, []); byRow.get(c.r)!.push(c); }
+  const fs = Math.max(1, Math.round(T.fontSize * 0.75 * 10) / 10);   // px -> pt
+  const rows: string[] = [];
+  for (let r = 0; r < T.nR; r++) {
+    const tds = (byRow.get(r) || []).sort((a, b) => a.c - b.c).map((c) => {
+      const style = [
+        `border:1px solid ${T.stroke}`, "padding:3pt 6pt", "vertical-align:top", `font-size:${fs}pt`,
+        c.bg && c.bg !== "transparent" ? `background:${c.bg}` : "", c.color ? `color:${c.color}` : "", c.align ? `text-align:${c.align}` : "",
+      ].filter(Boolean).join(";");
+      const span = (c.cs > 1 ? ` colspan="${c.cs}"` : "") + (c.rs > 1 ? ` rowspan="${c.rs}"` : "");
+      const body = c.text.split("\n").map(esc).join('<br style="mso-data-placement:same-cell;">');
+      return `<td${span} style="${style}">${body}</td>`;
+    });
+    rows.push(`<tr>${tds.join("")}</tr>`);
+  }
+  const cols = T.cols.map((w) => `<col style="width:${Math.round(w)}px">`).join("");
+  return `<html><head><meta charset="utf-8"></head><body><table style="border-collapse:collapse">${cols}${rows.join("")}</table></body></html>`;
 }

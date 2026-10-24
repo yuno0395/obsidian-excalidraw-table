@@ -1,5 +1,6 @@
 import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { t, MsgKey } from "./i18n";
+import { SavedTheme, ThemeChoice } from "./theme";
 
 export interface TableSettings {
   colWidth: number;
@@ -8,6 +9,8 @@ export interface TableSettings {
   cellColor: string;
   strokeColor: string;
   pasteAsTable: boolean;
+  themes: SavedTheme[];            // themes the user saved
+  lastTheme: ThemeChoice | null;   // the theme picked last (also used for pasted tables)
 }
 
 export const DEFAULT_SETTINGS: TableSettings = {
@@ -17,6 +20,8 @@ export const DEFAULT_SETTINGS: TableSettings = {
   cellColor: "#ffffff",
   strokeColor: "#495057",
   pasteAsTable: true,
+  themes: [],
+  lastTheme: null,
 };
 
 type Host = Plugin & { settings: TableSettings; saveSettings(): Promise<void> };
@@ -41,5 +46,11 @@ export class TableSettingTab extends PluginSettingTab {
     color("sStrokeColor", "strokeColor");
     new Setting(containerEl).setName(t("sPaste")).setDesc(t("sPasteDesc"))
       .addToggle((tg) => tg.setValue(s.pasteAsTable).onChange(async (b) => { s.pasteAsTable = b; await save(); }));
+    // saved themes: shown in the insert dialog; deleted here
+    new Setting(containerEl).setName(t("sThemes")).setDesc(s.themes.length ? t("sThemesDesc") : t("sThemesNone")).setHeading();
+    s.themes.forEach((th, i) => {
+      new Setting(containerEl).setName(th.name).setDesc(`${th.color}  ${th.mode === "line" ? t("modeLine") : t("modeFill")}`)
+        .addExtraButton((b) => b.setIcon("trash").setTooltip(t("delete")).onClick(async () => { s.themes.splice(i, 1); await save(); this.display(); }));
+    });
   }
 }
