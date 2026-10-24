@@ -27,7 +27,10 @@ export const DEFAULT_SETTINGS: TableSettings = {
 type Host = Plugin & { settings: TableSettings; saveSettings(): Promise<void> };
 
 export class TableSettingTab extends PluginSettingTab {
+  private armed: string | null = null;   // the theme whose delete button was pressed once (until the settings close)
   constructor(app: App, private plugin: Host) { super(app, plugin); }
+
+  hide() { this.armed = null; }
 
   display() {
     const { containerEl } = this;
@@ -44,10 +47,19 @@ export class TableSettingTab extends PluginSettingTab {
     // saved themes: shown in the insert dialog; deleted here
     new Setting(containerEl).setName(t("sThemes")).setDesc(s.themes.length ? t("sThemesDesc") : t("sThemesNone")).setHeading();
     s.themes.forEach((th, i) => {
-      const n = normalizeTheme(th);
+      const n = normalizeTheme(th), armed = this.armed === th.name;
       new Setting(containerEl).setName(th.name)
         .setDesc(`${t("lineColor")} ${n.stroke} / ${t("fillHeader")} ${n.header.color} ${n.header.alpha}% / ${t("fillBody")} ${n.body.color} ${n.body.alpha}%`)
-        .addExtraButton((b) => b.setIcon("trash").setTooltip(t("delete")).onClick(async () => { s.themes.splice(i, 1); await save(); this.display(); }));
+        .addButton((b) => {
+          // two clicks: the first turns the button into "click again to delete", the second deletes
+          b.setButtonText(t(armed ? "confirmDelete" : "delete"));
+          if (armed) b.setWarning();
+          b.onClick(async () => {
+            if (armed) { this.armed = null; s.themes.splice(i, 1); await save(); }
+            else this.armed = th.name;
+            this.display();
+          });
+        });
     });
   }
 }

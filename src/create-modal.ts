@@ -1,7 +1,7 @@
 // The "Insert table" dialog: point at a grid to choose the size (or type the numbers), and pick the colours:
 // the line colour, and the fill (colour and opacity) of the top row and of the other rows.
 
-import { App, ColorComponent, Modal, Notice, Setting, SliderComponent, TextComponent } from "obsidian";
+import { App, ColorComponent, Menu, Modal, Notice, Setting, SliderComponent, TextComponent } from "obsidian";
 import { t, MsgKey } from "./i18n";
 import { Colors, MAX_SIZE } from "./model";
 import { TableSettings } from "./settings";
@@ -100,7 +100,11 @@ export class CreateModal extends Modal {
       });
       b.addEventListener("click", () => pick(th));
       b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(th); } });
-      if (onRemove) b.addEventListener("contextmenu", (e) => { e.preventDefault(); onRemove(); });
+      // deleting takes two clicks: right-click opens a menu, "Delete" in it deletes
+      if (onRemove) b.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        new Menu().addItem((i) => i.setTitle(t("deleteTheme")).setIcon("trash").setWarning(true).onClick(onRemove)).showAtMouseEvent(e);
+      });
     };
     const renderSwatches = () => {
       swatches.empty();
