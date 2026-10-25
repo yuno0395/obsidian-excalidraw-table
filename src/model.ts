@@ -13,6 +13,7 @@ import { maxOf, minOf } from "./util";
 export const CELL = "exTable", MODEL = "exTableModel", TEXT = "exTableText";
 export const PAD = 8, GAP = 6, MINH = 36, MINW = 40;
 export const MAX_SIZE = 100;   // most rows / columns the insert dialog accepts
+export const MAX_GRID = 2000;  // a stored model with more rows or columns than this is not taken as a table (see validModel)
 
 export type Align = "left" | "center" | "right";
 export type Anchor = { r: number; c: number; rs: number; cs: number };   // a cell: top-left position and span
@@ -56,6 +57,18 @@ export const pad = (M: Pick<Model, "fs" | "base">) => PAD * unit(M);
 export const gap = (M: Pick<Model, "fs" | "base">) => GAP * unit(M);
 export const minH = (M: Pick<Model, "fs" | "base">) => MINH * unit(M);
 export const minW = (M: Pick<Model, "fs" | "base">) => MINW * unit(M);
+
+// Is a model read from a drawing usable? (The file may come from anyone: a broken or made-up model is left alone
+// rather than laid out, so it cannot make the plugin loop over millions of cells or write odd values.)
+export function validModel(M: any): M is Model {
+  const whole = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
+  const nums = (a: unknown, n: number) => Array.isArray(a) && a.length === n && a.every((v) => Number.isFinite(v));
+  if (!M || typeof M !== "object" || typeof M.id !== "string") return false;
+  if (!whole(M.nR, 1, MAX_GRID) || !whole(M.nC, 1, MAX_GRID) || !(Number.isFinite(M.fs) && M.fs > 0)) return false;
+  if (!nums(M.cols, M.nC) || !nums(M.rowH, M.nR) || !nums(M.rowMin, M.nR)) return false;
+  return Array.isArray(M.merges) && M.merges.every((m: any) =>
+    m && whole(m.r, 0, M.nR - 1) && whole(m.c, 0, M.nC - 1) && whole(m.rs, 1, M.nR - m.r) && whole(m.cs, 1, M.nC - m.c));
+}
 
 // a copy that can be changed without touching the one stored in the scene
 export const copyModel = (M: Model): Model => JSON.parse(JSON.stringify(M));

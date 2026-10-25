@@ -6,7 +6,7 @@
 
 import {
   Align, Anchor, CELL, Colors, Content, MINH, MODEL, Model, Op, OpName, TEXT,
-  TableError, anchors, cellAt, copyModel, gap, isHeader, key, minH, minW, pad, scaleModel, structureOps, sum,
+  TableError, anchors, cellAt, copyModel, validModel, gap, isHeader, key, minH, minW, pad, scaleModel, structureOps, sum,
 } from "./model";
 import { bounds } from "./geom";
 import { ExportTable, fitColumns } from "./text";
@@ -25,7 +25,7 @@ function parts(api: any, T: string) {
   const els = api.getSceneElements();
   const rects = els.filter((e: any) => isCellOf(e, T));
   const imgs = els.filter((e: any) => isImageOf(e, T));
-  const head = rects.find((e: any) => e.customData[CELL].r === 0 && e.customData[CELL].c === 0 && e.customData[MODEL]);
+  const head = rects.find((e: any) => e.customData[CELL].r === 0 && e.customData[CELL].c === 0 && validModel(e.customData[MODEL]));
   const byContainer = new Map<string, any>();
   for (const e of els) if (e.type === "text" && e.containerId) byContainer.set(e.containerId, e);
   const bound = (r: any) => (r ? byContainer.get(r.id) : undefined);
@@ -36,7 +36,7 @@ function parts(api: any, T: string) {
 }
 
 export const tablesIn = (api: any): string[] =>
-  [...new Set<string>(api.getSceneElements().filter((e: any) => e.customData?.[MODEL]).map((e: any) => e.customData[CELL].id))];
+  [...new Set<string>(api.getSceneElements().filter((e: any) => e.customData?.[CELL] && validModel(e.customData[MODEL])).map((e: any) => e.customData[CELL].id))];
 
 // the table model, as last laid out
 export const modelOf = (api: any, T: string): Model | undefined => parts(api, T).head?.customData?.[MODEL];
@@ -183,8 +183,9 @@ export class Tables {
       if (Object.keys(p).length) ch.push(upd(b, p));
     }
     api.updateScene({ elements: withChanges(P.els, ch), ...LATER });
-    const rectIds = new Set(P.rects.map((r: any) => r.id));
-    api.updateContainerSize(api.getSceneElements().filter((e: any) => rectIds.has(e.id)));
+    // Excalidraw re-wraps the text in the cells and grows them to fit it (read back in step 3)
+    const fitText = () => api.updateContainerSize(cellRects(api, T));
+    fitText();
     // 3) row height = max(height set by the user, content); a merged cell adds what it lacks to its last row
     P = parts(api, T);
     const need: number[] = Array(M.nR).fill(minH(M)), info: any[] = [];
@@ -221,7 +222,7 @@ export class Tables {
     // images in front of the cells (so a rebuilt cell's fill does not hide them)
     const arr = withChanges(els2, ch2), isImg = (e: any) => isImageOf(e, T);
     api.updateScene({ elements: [...arr.filter((e) => !isImg(e)), ...arr.filter(isImg)], ...LATER });
-    api.updateContainerSize(api.getSceneElements().filter((e: any) => rectIds.has(e.id)));
+    fitText();
   }
 
   // Was the whole table resized as one (all cells scaled alike)? Then: the scale and the new top-left corner.
@@ -394,7 +395,8 @@ export class Tables {
   async reshape(view: any, fn: Op): Promise<string[]> {
     const { api, T, cells } = this.target(view);
     this.layout(view, T);
-    const P = parts(api, T), M = copyModel(P.head.customData[MODEL]);
+    const P = parts(api, T); if (!P.head) throw new TableError(this.msg("selectTable"));
+    const M = copyModel(P.head.customData[MODEL]);
     const C = this.colors(M);
     M.colors = C;   // a table made before colours were kept: it keeps the colours it has now
     const content: Content = {};

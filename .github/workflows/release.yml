@@ -22,6 +22,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           v=$(node -p "require('./manifest.json').version")
+          # only a plain version number (it is used as a tag name and in commands below)
+          if ! printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then echo "bad version: $v"; exit 1; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
           if gh release view "$v" >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-node@v4
@@ -37,6 +39,7 @@ jobs:
         if: steps.v.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
         run: |
-          gh release create "${{ steps.v.outputs.version }}" main.js manifest.json \
-            --target "${GITHUB_SHA}" --title "${{ steps.v.outputs.version }}" --generate-notes
+          gh release create "$VERSION" main.js manifest.json \
+            --target "${GITHUB_SHA}" --title "$VERSION" --generate-notes

@@ -24,6 +24,21 @@ import { ViewHook } from "./view-hook";
 
 const EXCALIDRAW = "obsidian-excalidraw-plugin";
 
+// HTML for apps that read it (Excel, PowerPoint, Word), with plain text for the rest
+async function copyRich(html: string, text: string) {
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      "text/html": new Blob([html], { type: "text/html" }),
+      "text/plain": new Blob([text], { type: "text/plain" }),
+    })]);
+  } catch {
+    // no rich clipboard here: Electron's own clipboard, else plain text
+    const electron = (window as any).require?.("electron");
+    if (electron?.clipboard?.write) electron.clipboard.write({ html, text });
+    else await navigator.clipboard.writeText(text);
+  }
+}
+
 export default class ExcalidrawTablePlugin extends Plugin {
   settings: TableSettings;
   tables: Tables;
@@ -99,22 +114,8 @@ export default class ExcalidrawTablePlugin extends Plugin {
   // Copy the selected table: for Excel / PowerPoint (an HTML table, with tab-separated text for plain editors), CSV, or Markdown.
   async copy(view: any, fmt: CopyFormat) {
     const { cells, table } = this.tables.exportTable(view);
-    if (fmt === "office") {
-      const html = toHtml(table), text = toTsv(cells);
-      try {
-        await navigator.clipboard.write([new ClipboardItem({
-          "text/html": new Blob([html], { type: "text/html" }),
-          "text/plain": new Blob([text], { type: "text/plain" }),
-        })]);
-      } catch {
-        // no rich clipboard here: Electron's own clipboard, else plain text
-        const electron = (window as any).require?.("electron");
-        if (electron?.clipboard?.write) electron.clipboard.write({ html, text });
-        else await navigator.clipboard.writeText(text);
-      }
-    } else {
-      await navigator.clipboard.writeText(fmt === "csv" ? toCsv(cells) : toMarkdown(cells));
-    }
+    if (fmt === "office") await copyRich(toHtml(table), toTsv(cells));
+    else await navigator.clipboard.writeText(fmt === "csv" ? toCsv(cells) : toMarkdown(cells));
     new Notice(t(fmt === "office" ? "copiedOffice" : fmt === "csv" ? "copiedCsv" : "copied"));
   }
 

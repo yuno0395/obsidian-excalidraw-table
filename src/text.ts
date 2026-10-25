@@ -115,27 +115,38 @@ export interface ExportTable { nR: number; nC: number; cols: number[]; stroke: s
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// Values put into the HTML come from the drawing file, which may have been made by someone else:
+// only plain colours, the three alignments and whole / finite numbers get through (nothing that could end the style or the tag).
+const CSS_COLOR = /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s]+\)|[a-z]{3,20})$/i;
+export const cssColor = (c?: string | null): string | null => (c && CSS_COLOR.test(c.trim()) ? c.trim() : null);
+const cssAlign = (a?: string): Align | null => (a === "left" || a === "center" || a === "right" ? a : null);
+const int = (v: unknown, min = 1) => Math.max(min, Math.round(Number(v)) || min);
+const num = (v: unknown, fallback: number) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
+
 // Merged cells become colspan / rowspan; colours, alignment and column widths are kept; a line break stays inside its cell
 // (Excel needs the mso style on <br> for that).
 export function toHtml(T: ExportTable): string {
   const byRow = new Map<number, ExportCell[]>();
   for (const c of T.cells) { if (!byRow.has(c.r)) byRow.set(c.r, []); byRow.get(c.r)!.push(c); }
-  const pt = (px: number) => Math.max(1, Math.round(px * 0.75 * 10) / 10);   // px -> pt
+  const pt = (px: number) => Math.max(1, Math.round(num(px, 16) * 0.75 * 10) / 10);   // px -> pt
+  const stroke = cssColor(T.stroke) ?? "#000000";
   const rows: string[] = [];
-  for (let r = 0; r < T.nR; r++) {
+  const nR = Math.min(int(T.nR, 0), maxOf(T.cells.map((c) => int(c.r, 0))) + 1);   // no empty rows past the last cell
+  for (let r = 0; r < nR; r++) {
     const tds = (byRow.get(r) || []).sort((a, b) => a.c - b.c).map((c) => {
       const style = [
-        `border:1px solid ${T.stroke}`, "padding:3pt 6pt", "vertical-align:top", `font-size:${pt(c.fs ?? T.fontSize)}pt`,
+        `border:1px solid ${stroke}`, "padding:3pt 6pt", "vertical-align:top", `font-size:${pt(c.fs ?? T.fontSize)}pt`,
         // Excel has no see-through colours: a fill as it looks on white
-        onWhite(c.bg) ? `background:${onWhite(c.bg)}` : "",
-        c.color ? `color:${c.color}` : "", c.align ? `text-align:${c.align}` : "",
+        cssColor(onWhite(c.bg)) ? `background:${cssColor(onWhite(c.bg))}` : "",
+        cssColor(c.color) ? `color:${cssColor(c.color)}` : "", cssAlign(c.align) ? `text-align:${cssAlign(c.align)}` : "",
       ].filter(Boolean).join(";");
-      const span = (c.cs > 1 ? ` colspan="${c.cs}"` : "") + (c.rs > 1 ? ` rowspan="${c.rs}"` : "");
-      const body = c.text.split("\n").map(esc).join('<br style="mso-data-placement:same-cell;">');
+      const cs = int(c.cs), rs = int(c.rs);
+      const span = (cs > 1 ? ` colspan="${cs}"` : "") + (rs > 1 ? ` rowspan="${rs}"` : "");
+      const body = String(c.text ?? "").split("\n").map(esc).join('<br style="mso-data-placement:same-cell;">');
       return `<td${span} style="${style}">${body}</td>`;
     });
     rows.push(`<tr>${tds.join("")}</tr>`);
   }
-  const cols = T.cols.map((w) => `<col style="width:${Math.round(w)}px">`).join("");
+  const cols = T.cols.map((w) => `<col style="width:${int(w, 0)}px">`).join("");
   return `<html><head><meta charset="utf-8"></head><body><table style="border-collapse:collapse">${cols}${rows.join("")}</table></body></html>`;
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
-import { toCsv, toHtml } from "../src/text";
+import { cssColor, toCsv, toHtml } from "../src/text";
 
 test("CSV quotes commas, quotes and line breaks; CRLF lines", () => {
   const csv = toCsv([["項目", "値"], ["a,b", 'say "hi"'], ["x<br>y", null]]);
@@ -31,4 +31,24 @@ test("HTML: a see-through fill is given as it looks on white; no fill is left ou
   ] });
   assert.match(html, /background:#7f7f7f">half/);
   assert.match(html, /font-size:12pt">none/);
+});
+
+test("HTML: values from the drawing cannot break out of the style or the tag", () => {
+  const evil = '#000;"><img src=x onerror=alert(1)>';
+  const html = toHtml({ nR: 1e9, nC: 1, cols: [80], stroke: evil, fontSize: 16, cells: [
+    { r: 0, c: 0, rs: '2" onclick="x' as any, cs: 1, text: "<b>t</b>", bg: evil, color: "expression(alert(1))", align: 'left;x:"' as any },
+  ] });
+  assert.ok(!html.includes("<img") && !html.includes("onclick") && !html.includes("expression") && !html.includes("<b>"));
+  assert.match(html, /border:1px solid #000000/);   // unreadable line colour: black
+  assert.equal((html.match(/<tr>/g) || []).length, 1);   // rows stop at the last cell, whatever nR says
+  assert.ok(!html.includes("rowspan"));   // a span that is not a number is no span
+});
+
+test("cssColor: plain colours only", () => {
+  assert.equal(cssColor("#1e1e1e"), "#1e1e1e");
+  assert.equal(cssColor("rgb(1, 2, 3)"), "rgb(1, 2, 3)");
+  assert.equal(cssColor("red"), "red");
+  assert.equal(cssColor("red;x"), null);
+  assert.equal(cssColor("url(http://x)"), null);
+  assert.equal(cssColor(undefined), null);
 });

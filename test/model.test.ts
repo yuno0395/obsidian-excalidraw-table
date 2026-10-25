@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
-import { Content, Model, TableError, anchors, cellAt, key, minH, pad, scaleModel, structureOps } from "../src/model";
+import { Content, Model, TableError, anchors, cellAt, key, minH, pad, scaleModel, structureOps, validModel } from "../src/model";
 
 const ops = structureOps(() => 100, (k) => k);
 const model = (nR: number, nC: number, merges: Model["merges"] = []): Model =>
@@ -115,4 +115,14 @@ test("merge keeps the first cell's font size", () => {
   const M = model(1, 2);
   const R = ops.merge(M, { "0,0": { text: "a", imgs: [], fr: 1.5 }, "0,1": { text: "b", imgs: [], fr: 0.5 } }, [sel(0, 0), sel(0, 1)]);
   assert.equal(R.content["0,0"].fr, 1.5);
+});
+
+test("validModel: a usable model, and broken or oversized ones", () => {
+  const ok = { id: "t", nR: 2, nC: 2, fs: 16, cols: [80, 80], rowMin: [0, 0], rowH: [36, 36], merges: [{ r: 0, c: 0, rs: 1, cs: 2 }] };
+  assert.ok(validModel(ok));
+  assert.ok(!validModel(null));
+  assert.ok(!validModel({ ...ok, nR: 1e7, rowH: [], rowMin: [] }));
+  assert.ok(!validModel({ ...ok, cols: [80] }));
+  assert.ok(!validModel({ ...ok, merges: [{ r: 0, c: 1, rs: 1, cs: 5 }] }));
+  assert.ok(!validModel({ ...ok, fs: "16" }));
 });
