@@ -11,7 +11,7 @@ import {
 import { bounds } from "./geom";
 import { ExportTable, fitColumns } from "./text";
 import { TableSettings } from "./settings";
-import { rnd, until, upd, withChanges } from "./util";
+import { LATER, NEVER, commit, rnd, until, upd, withChanges } from "./util";
 
 // ---------- reading the scene ----------
 // a cell rectangle / an image in a cell of table T
@@ -182,7 +182,7 @@ export class Tables {
       if (b.frameId !== frameId) p.frameId = frameId;
       if (Object.keys(p).length) ch.push(upd(b, p));
     }
-    api.updateScene({ elements: withChanges(P.els, ch) });
+    api.updateScene({ elements: withChanges(P.els, ch), ...LATER });
     const rectIds = new Set(P.rects.map((r: any) => r.id));
     api.updateContainerSize(api.getSceneElements().filter((e: any) => rectIds.has(e.id)));
     // 3) row height = max(height set by the user, content); a merged cell adds what it lacks to its last row
@@ -220,7 +220,7 @@ export class Tables {
     }
     // images in front of the cells (so a rebuilt cell's fill does not hide them)
     const arr = withChanges(els2, ch2), isImg = (e: any) => isImageOf(e, T);
-    api.updateScene({ elements: [...arr.filter((e) => !isImg(e)), ...arr.filter(isImg)] });
+    api.updateScene({ elements: [...arr.filter((e) => !isImg(e)), ...arr.filter(isImg)], ...LATER });
     api.updateContainerSize(api.getSceneElements().filter((e: any) => rectIds.has(e.id)));
   }
 
@@ -266,8 +266,9 @@ export class Tables {
     api.updateScene({ elements: withChanges(P.els, [
       upd(P.head, { customData: { ...P.head.customData, [MODEL]: M } }),
       ...P.imgs.map((im: any) => upd(im, { width: im.width * k, height: im.height * k })),   // images scale with the text
-    ]) });
+    ]), ...LATER });
     this.layout(view, T, { fromModel: true });
+    commit(api);
   }
 
   // Does the table need a layout? (so that a click does not rewrite the drawing)
@@ -318,7 +319,7 @@ export class Tables {
         changed.add(cur.id);
       }
     }
-    if (ups.length) api.updateScene({ elements: withChanges(els, ups) });
+    if (ups.length) api.updateScene({ elements: withChanges(els, ups), ...LATER });
     return changed;
   }
 
@@ -330,7 +331,7 @@ export class Tables {
     const ids: Record<string, true> = {};
     for (const p of at) { const a = cellAt(M, p.r, p.c), e = a && P.rectAt(a.r, a.c); if (e) ids[e.id] = true; }
     if (!Object.keys(ids).length) return [];
-    api.updateScene({ appState: { selectedElementIds: ids, selectedGroupIds: {}, editingGroupId: groupsOf(P.head)[0] ?? null } });
+    api.updateScene({ appState: { selectedElementIds: ids, selectedGroupIds: {}, editingGroupId: groupsOf(P.head)[0] ?? null }, ...NEVER });
     return Object.keys(ids);
   }
 
@@ -362,7 +363,7 @@ export class Tables {
     }
     ea.addToGroup(ids);
     ea.getElements().forEach((e: any) => { if (groups?.length) e.groupIds = [...groups]; if (frameId) e.frameId = frameId; });
-    await ea.addElementsToView(false, false, true);
+    await ea.addElementsToView(false, false, true, false, LATER.captureUpdate);   // (captured by the command that draws)
     // the new elements reach the scene a moment later
     await until(() => !!parts(view.excalidrawAPI, M.id).head, 3000);
     this.layout(view, M.id, { fromModel: true });
@@ -383,6 +384,7 @@ export class Tables {
     const content: Content = {};
     opt.rows?.forEach((row, r) => row.forEach((text, c) => { if (text) content[key(r, c)] = { text, imgs: [] }; }));
     await this.draw(view, M, x, y, fr?.id ?? null, null, content);
+    commit(api);
     return M.id;
   }
 
@@ -417,8 +419,9 @@ export class Tables {
         return upd(e, { customData: { ...e.customData, [CELL]: { ...e.customData[CELL], r, c } } });
       }
       return e;
-    }) });
+    }), ...LATER });
     await this.draw(view, N.M, x, y, frameId, groups.length ? groups : null, N.content);
+    commit(api);   // one undo step for the whole command (the selection below is not part of it)
     const f = N.focus ?? sel[0];
     return f ? this.select(view, T, [{ r: Math.min(f.r, N.M.nR - 1), c: Math.min(f.c, N.M.nC - 1) }]) : [];
   }
@@ -433,15 +436,16 @@ export class Tables {
       const b = P.bound(e);
       if (b) ch.push(upd(b, { textAlign: al, customData: { ...(b.customData || {}), [TEXT]: true } }));
     }
-    api.updateScene({ elements: withChanges(P.els, ch) });
+    api.updateScene({ elements: withChanges(P.els, ch), ...LATER });
     this.layout(view, T);
+    commit(api);
   }
 
   // The selected table for copying out: its cells as text (see Model.cells), and with colours and spans for HTML.
   exportTable(view: any): { cells: (string | null)[][]; table: ExportTable } {
     const api = view.excalidrawAPI, { T } = selectedCells(api);
     if (!T) throw new TableError(this.msg("selectTable"));
-    if (!api.getAppState().viewModeEnabled) this.layout(view, T);
+    if (!api.getAppState().viewModeEnabled && this.dirty(api, T)) { this.layout(view, T); commit(api); }
     const P = parts(api, T), M: Model | undefined = P.head?.customData?.[MODEL];
     if (!M) throw new TableError(this.msg("selectTable"));
     const cells = M.cells ?? snapshot(P, M), C = this.colors(M);
@@ -461,6 +465,13 @@ export class Tables {
     // never while typing or dragging (a layout would overwrite the text being typed), nor in view mode
     if (st.editingTextElement || st.newElement || st.resizingElement || st.viewModeEnabled) return;
     const moved = this.adopt(view);
-    for (const T of tablesIn(api)) if (moved.has(T) || this.dirty(api, T)) this.layout(view, T, { resized, scaled: !!resized && T === scaledT });
+    let changed = moved.size > 0;
+    for (const T of tablesIn(api)) {
+      if (!moved.has(T) && !this.dirty(api, T)) continue;
+      this.layout(view, T, { resized, scaled: !!resized && T === scaledT });
+      changed = true;
+    }
+    // its own undo step, after the user's (Excalidraw has already captured the drag or the typing by now)
+    if (changed) commit(api);
   }
 }

@@ -7,7 +7,7 @@ import { CELL, anchors, cellAt } from "./model";
 import { Tables, isCellSelection, modelOf, selectedCells, wholeTableSelected } from "./table";
 import { CopyFormat } from "./text";
 import { CellToolbar, StretchHandles } from "./toolbar";
-import { until } from "./util";
+import { NEVER, until } from "./util";
 
 export interface Host {
   tables: Tables;
@@ -236,7 +236,7 @@ export class ViewHook {
     await until(selected, 500);
     for (let i = 0; i < 3 && !typingIn(); i++) {
       if (api.getAppState().editingTextElement) { this.finishTyping(); await until(() => !api.getAppState().editingTextElement, 300); }
-      if (!selected()) { api.updateScene({ appState: { selectedElementIds: { [cellId]: true }, selectedGroupIds: {} } }); await until(selected, 300); }
+      if (!selected()) { api.updateScene({ appState: { selectedElementIds: { [cellId]: true }, selectedGroupIds: {} }, ...NEVER }); await until(selected, 300); }
       this.startTyping();
       if (await until(typingIn, 300)) break;
     }

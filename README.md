@@ -57,6 +57,7 @@ BRAT を使っている場合は、`yuno0395/obsidian-excalidraw-table` を足�
 - **ボタン**：セルを選ぶと、表の上に「上に行・下に行・左に列・右に列・行を削除・列を削除・結合（または結合を解除）・寄せ・コピー」のボタンが出ます。
 - **貼り付けで表を作る**：Excel・Google スプレッドシートなどでセルをコピーするか、Markdown の表をコピーして、キャンバスの上で Ctrl/Cmd + V。マウスのある場所に、中身に合わせた列の幅で表ができます。ふつうの文字として貼りたい時は Shift を押しながら貼り付けます（設定で切ることもできます）。
 - **画像を入れる**：キャンバスに置いた画像を、セルの上にドラッグして離します。表の外へドラッグすると、表から外れます。
+- **元に戻す（Ctrl/Cmd + Z）**：表を作る・貼り付けで作る・行や列の追加と削除・結合・寄せ・伸縮は、どれも1回で元に戻ります（Ctrl/Cmd + Shift + Z でやり直し）。文字を書いた後やセルの大きさをドラッグで変えた後は、表の整え直しが別の1回になるので、2回で元に戻ります。
 - **大きさを変える**：
   - セルの右下の角をドラッグすると、その列の幅とその行の高さが変わります。
   - 表全体を選んで角をドラッグすると、表全体が縦横同じ割合で伸び縮みします。文字の大きさ・セルの余白も同じ割合で変わるので、小さくしても見た目の釣り合いは変わりません。
@@ -119,6 +120,7 @@ Tables on the Excalidraw canvas in Obsidian, PowerPoint style. Requires the Exca
 - Type into cells directly; Enter for a line break, Tab to the next cell (Tab in the last cell adds a row).
 - Arrow keys move between cells; Shift + arrows select a range.
 - Selecting cells shows a toolbar above the table: add rows/columns on any side, delete, merge/unmerge, align.
+- Undo (Ctrl/Cmd + Z) takes back each table command in one step (insert, paste, rows/columns, merge, align, stretch). After typing or dragging a cell size, the re-layout is a step of its own, so it takes two.
 - Drop an image onto a cell to put it in that cell (scaled to the column width); drag it out to take it out.
 - Header row and header column; per-cell text alignment (left / center / right).
 - Drag a column width, a row height or the whole table; the table re-lays itself out when you release. Rows grow and shrink with their content.
