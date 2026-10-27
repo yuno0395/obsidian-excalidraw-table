@@ -1,9 +1,9 @@
 {
   "id": "excalidraw-table",
   "name": "Excalidraw Table",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "minAppVersion": "1.5.0",
-  "description": "Tables on the Excalidraw canvas: create by rows and columns, merge cells, add or delete rows and columns, drag to resize, and drop images into cells. Requires the Excalidraw plugin.",
+  "description": "Tables on the Excalidraw canvas: create by rows and columns, merge cells, add or delete rows and columns, drag to resize, and drop images or grouped drawings into cells. Requires the Excalidraw plugin.",
   "author": "yuno0395",
   "authorUrl": "https://github.com/yuno0395",
   "isDesktopOnly": false

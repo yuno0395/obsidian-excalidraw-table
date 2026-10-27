@@ -56,7 +56,10 @@ BRAT を使っている場合は、`yuno0395/obsidian-excalidraw-table` を足�
   - Tab で移ったセルにすでに文字があると、打った文字で置き換わります（Excel と同じ）。
 - **ボタン**：セルを選ぶと、表の上に「上に行・下に行・左に列・右に列・行を削除・列を削除・結合（または結合を解除）・寄せ・コピー」のボタンが出ます。
 - **貼り付けで表を作る**：Excel・Google スプレッドシートなどでセルをコピーするか、Markdown の表をコピーして、キャンバスの上で Ctrl/Cmd + V。マウスのある場所に、中身に合わせた列の幅で表ができます。ふつうの文字として貼りたい時は Shift を押しながら貼り付けます（設定で切ることもできます）。
-- **画像を入れる**：キャンバスに置いた画像を、セルの上にドラッグして離します。表の外へドラッグすると、表から外れます。セルの中の画像の上に置いた矢印や文字は、画像の手前に表示されます（行や列を足しても変わりません）。
+- **画像や図を入れる**：キャンバスに置いた画像を、セルの上にドラッグして離します。表の外へドラッグすると、表から外れます。
+  - 複数の画像や図形・文字をグループにしたもの（Ctrl/Cmd + G）は、並びをそのままにして1つのかたまりとして入ります。グループにしていない図形（表の上に描いた矢印やメモ）は表に入りません。
+  - セルより幅が広いものは、縦横の比を保ったまま中身ごと縮めて入れます。列を広げると、入れた時の大きさまで戻ります。
+  - セルの中の画像の上に置いた矢印や文字は、画像の手前に表示されます（行や列を足しても変わりません）。
 - **元に戻す（Ctrl/Cmd + Z）**：表を作る・貼り付けで作る・行や列の追加と削除・結合・寄せ・伸縮は、どれも1回で元に戻ります（Ctrl/Cmd + Shift + Z でやり直し）。文字を書いた後やセルの大きさをドラッグで変えた後は、表の整え直しが別の1回になるので、2回で元に戻ります。
 - **大きさを変える**：
   - セルの右下の角をドラッグすると、その列の幅とその行の高さが変わります。
@@ -119,6 +122,7 @@ Tables on the Excalidraw canvas in Obsidian, PowerPoint style. Requires the Exca
 - Copy a table for Excel / PowerPoint / Word (pastes as a real table with colours and merged cells), or as CSV or Markdown.
 - Type into cells directly; Enter for a line break, Tab to the next cell (Tab in the last cell adds a row).
 - Arrow keys move between cells; Shift + arrows select a range.
+- Drop an image, or a group (Ctrl/Cmd + G) of images, shapes and text, on a cell to put it in the cell: a group keeps its arrangement and is scaled down as a whole to fit (and back up to its own size when the column widens). Shapes that are in no group are not taken in.
 - Selecting cells shows a toolbar above the table: add rows/columns on any side, delete, merge/unmerge, align.
 - Undo (Ctrl/Cmd + Z) takes back each table command in one step (insert, paste, rows/columns, merge, align, stretch). After typing or dragging a cell size, the re-layout is a step of its own, so it takes two.
 - Drop an image onto a cell to put it in that cell (scaled to the column width); drag it out to take it out.

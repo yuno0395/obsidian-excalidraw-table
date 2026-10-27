@@ -1,6 +1,7 @@
 // Tables on the Excalidraw canvas: reading them from the scene, laying them out, drawing and rebuilding them.
 //
-// A table is a group of cell rectangles (text is bound inside each rectangle) plus images placed in cells.
+// A table is a group of cell rectangles (text is bound inside each rectangle) plus items placed in cells: an image,
+// or a group the user made (images, shapes, text...), kept as it is and scaled down as a whole to fit the cell.
 // The model (src/model.ts) is stored on the top-left cell; it also keeps `cells`, a copy of the content as text
 // (line breaks as <br>, images as ![[path]], covered cells of a merge as null) so other tools can read the table.
 
@@ -8,31 +9,40 @@ import {
   Align, Anchor, CELL, Colors, Content, MINH, MODEL, Model, Op, OpName, TEXT,
   TableError, anchors, cellAt, copyModel, validModel, gap, isHeader, key, minH, minW, pad, scaleModel, structureOps, sum,
 } from "./model";
-import { bounds } from "./geom";
+import { Box, bounds, placeElement } from "./geom";
 import { ExportTable, fitColumns } from "./text";
 import { TableSettings } from "./settings";
 import { LATER, NEVER, commit, rnd, until, upd, withChanges } from "./util";
 
 // ---------- reading the scene ----------
-// a cell rectangle / an image in a cell of table T
-const isCellOf = (e: any, T: string) => e.type === "rectangle" && e.customData?.[CELL]?.id === T;
-const isImageOf = (e: any, T: string) => e.type === "image" && e.customData?.[CELL]?.id === T;
+// The item an element belongs to (see the item note in model.ts): its group's id, or an image's own id; none for a cell.
+const itemOf = (e: any): string | undefined => {
+  const n = e?.customData?.[CELL]; if (!n) return undefined;
+  return n.item ?? (e.type === "image" ? e.id : undefined);
+};
+// The cell data of a cell rectangle (of any table); undefined for anything else, the rectangles of an item included.
+export const cellData = (e: any): { id: string; r: number; c: number; rs?: number; cs?: number } | undefined =>
+  e?.type === "rectangle" && e.customData?.[CELL] && itemOf(e) === undefined ? e.customData[CELL] : undefined;
+// a cell rectangle / an element of an item in a cell of table T
+const isCellOf = (e: any, T: string) => cellData(e)?.id === T;
+const isItemOf = (e: any, T: string) => e.customData?.[CELL]?.id === T && itemOf(e) !== undefined;
 
-// The stacking order with table T's elements together in one run: cells (with their text), then the images in cells
-// (a filled cell would hide an image below it). The run stays where the table is, or goes just above `after`
+// The stacking order with table T's elements together in one run: cells (with their text), then the items in cells
+// (a filled cell would hide an item below it). The run stays where the table is, or goes just above `after`
 // (an element id; null: at the bottom), so shapes the user put over the table, arrows or text on an image, stay over it.
 export function stacked(els: any[], T: string, after?: string | null): any[] {
   const cells = new Set(els.filter((e) => isCellOf(e, T)).map((e) => e.id));
-  const mine = (e: any) => cells.has(e.id) || isImageOf(e, T) || (e.type === "text" && !!e.containerId && cells.has(e.containerId));
+  const isCellPart = (e: any) => cells.has(e.id) || (e.type === "text" && !!e.containerId && cells.has(e.containerId));
+  const mine = (e: any) => isCellPart(e) || isItemOf(e, T);
   const first = els.findIndex(mine); if (first < 0) return els;
   const rest = els.filter((e) => !mine(e));
-  const run = [...els.filter((e) => mine(e) && !isImageOf(e, T)), ...els.filter((e) => isImageOf(e, T))];
+  const run = [...els.filter(isCellPart), ...els.filter((e) => isItemOf(e, T))];
   const found = after ? rest.findIndex((e) => e.id === after) : -1;
   const at = after === null ? 0 : found >= 0 ? found + 1 : els.slice(0, first).filter((e) => !mine(e)).length;
   // Things put on the table that ended up behind it (earlier versions rebuilt a table on top of everything):
-  // arrows tied to a cell or an image of the table, and arrows, lines, text and drawings lying on one of its images.
+  // arrows tied to the table, and arrows, lines, text and drawings lying on one of its images.
   // They go just above the table again. (A shape behind the table that is neither, a background, stays behind.)
-  const ids = new Set(run.map((e) => e.id)), imgs = run.filter((e) => isImageOf(e, T));
+  const ids = new Set(run.map((e) => e.id)), imgs = run.filter((e) => e.type === "image" && isItemOf(e, T));
   const tied = (e: any) => ids.has(e.startBinding?.elementId) || ids.has(e.endBinding?.elementId);
   const onImage = (e: any) => ["arrow", "line", "text", "freedraw"].includes(e.type) && !e.containerId && imgs.some((im) => {
     const cx = e.x + (e.width || 0) / 2, cy = e.y + (e.height || 0) / 2;
@@ -47,26 +57,53 @@ const sameOrder = (a: any[], b: any[]) => a.length === b.length && a.every((e, i
 // The element just below the table's run (null: the table is at the bottom), to put a rebuilt table back in its place.
 function below(els: any[], T: string): string | null {
   const cells = new Set(els.filter((e) => isCellOf(e, T)).map((e) => e.id));
-  const mine = (e: any) => cells.has(e.id) || isImageOf(e, T) || (e.type === "text" && !!e.containerId && cells.has(e.containerId));
+  const mine = (e: any) => cells.has(e.id) || isItemOf(e, T) || (e.type === "text" && !!e.containerId && cells.has(e.containerId));
   const first = els.findIndex(mine);
   return first > 0 ? els[first - 1].id : null;
+}
+
+// What could go into a cell: the drawing's images and user-made groups, each as one unit (key: the outermost group
+// that holds no table, or an image's own id; all of a group's elements, the text inside its shapes included).
+// loose: elements that were part of an item but are now in none (the group was taken apart).
+// tableGroups: the groups that hold a table (its own, and any the user made around a whole table): never items.
+export function unitsOf(els: any[]) {
+  const cells = els.filter((e) => cellData(e)), cellIds = new Set(cells.map((e) => e.id));
+  const tableGroups = new Set<string>(cells.flatMap((e) => e.groupIds || []));
+  const userGroup = (e: any) => [...(e.groupIds || [])].reverse().find((g: string) => !tableGroups.has(g));
+  const units = new Map<string, any[]>(), loose: any[] = [];
+  for (const e of els) {
+    if (e.isDeleted || cellData(e) || (e.containerId && cellIds.has(e.containerId)) || e.type === "frame" || e.type === "magicframe") continue;
+    const k = userGroup(e) ?? (e.type === "image" ? e.id : undefined);
+    if (k) { if (!units.has(k)) units.set(k, []); units.get(k)!.push(e); }
+    else if (e.customData?.[CELL]) loose.push(e);
+  }
+  return { units, loose, tableGroups };
 }
 
 // the cell rectangles of table T
 export const cellRects = (api: any, T: string): any[] => api.getSceneElements().filter((e: any) => isCellOf(e, T));
 
+// an item in a cell: its key (see itemOf), its elements, the box around them, and the cell it is in
+// nw: the item's own width (as it was dropped in): it is shown at that width, or narrower to fit the cell
+export type Item = { key: string; els: any[]; box: Box; r: number; c: number; nw: number };
+
 function parts(api: any, T: string) {
   const els = api.getSceneElements();
   const rects = els.filter((e: any) => isCellOf(e, T));
-  const imgs = els.filter((e: any) => isImageOf(e, T));
   const head = rects.find((e: any) => e.customData[CELL].r === 0 && e.customData[CELL].c === 0 && validModel(e.customData[MODEL]));
   const byContainer = new Map<string, any>();
   for (const e of els) if (e.type === "text" && e.containerId) byContainer.set(e.containerId, e);
   const bound = (r: any) => (r ? byContainer.get(r.id) : undefined);
   const rectAt = (r: number, c: number) => rects.find((e: any) => e.customData[CELL].r === r && e.customData[CELL].c === c);
-  const imgsAt = (r: number, c: number) =>
-    imgs.filter((e: any) => e.customData[CELL].r === r && e.customData[CELL].c === c).sort((a: any, b: any) => a.y - b.y);
-  return { els, rects, imgs, head, bound, rectAt, imgsAt };
+  const byKey = new Map<string, any[]>();
+  for (const e of els) if (isItemOf(e, T)) { const k = itemOf(e)!; if (!byKey.has(k)) byKey.set(k, []); byKey.get(k)!.push(e); }
+  const items: Item[] = [...byKey].map(([k, es]) => {
+    const n = es[0].customData[CELL], box = bounds(es)!;
+    return { key: k, els: es, box, r: n.r, c: n.c, nw: n.nw > 0 ? n.nw : box.x1 - box.x0 };   // (no nw: placed by an earlier version)
+  });
+  // the items of a cell, top to bottom
+  const itemsAt = (r: number, c: number) => items.filter((it) => it.r === r && it.c === c).sort((a, b) => a.box.y0 - b.box.y0);
+  return { els, rects, items, head, bound, rectAt, itemsAt };
 }
 
 export const tablesIn = (api: any): string[] =>
@@ -92,7 +129,8 @@ function snapshot(P: ReturnType<typeof parts>, M: Model) {
   const cells: (string | null)[][] = Array.from({ length: M.nR }, () => Array(M.nC).fill(null));
   for (const a of anchors(M)) {
     const e = P.rectAt(a.r, a.c);
-    cells[a.r][a.c] = [textOf(P.bound(e)).replace(/\n/g, "<br>"), ...P.imgsAt(a.r, a.c).map((x: any) => `![[${x.customData[CELL].img || ""}]]`)]
+    const images = P.itemsAt(a.r, a.c).flatMap((it) => it.els.filter((x: any) => x.type === "image"));
+    cells[a.r][a.c] = [textOf(P.bound(e)).replace(/\n/g, "<br>"), ...images.map((x: any) => `![[${x.customData[CELL].img || ""}]]`)]
       .filter(Boolean).join(" ");
   }
   return cells;
@@ -112,7 +150,8 @@ export function selectedCells(api: any): { T: string | undefined; cells: { id: s
   for (const id of Object.keys(sel)) {
     let e: any = byId.get(id); if (!e) continue;
     if (e.containerId) e = byId.get(e.containerId);
-    if (e?.type === "rectangle" && e.customData?.[CELL] && !out.includes(e.customData[CELL])) out.push(e.customData[CELL]);   // a cell and its text: once
+    const n = cellData(e);
+    if (n && !out.includes(n)) out.push(n);   // a cell and its text: once
   }
   const T = out[0]?.id;
   return { T, cells: out.filter((n) => n.id === T) };
@@ -227,10 +266,15 @@ export class Tables {
     for (const a of A) {
       const e = P.rectAt(a.r, a.c); if (!e) continue;
       const b = P.bound(e), th = textOf(b) ? b.height : 0, w = Math.max(1, sum(M.cols, a.c, a.cs) - 2 * PADm);
-      const ims = P.imgsAt(a.r, a.c);
-      const sz = ims.map((x: any) => { const iw = Math.min(w, x.width); return [iw, (iw * x.height) / x.width]; });
-      const h = PADm + th + (ims.length ? (th ? GAPm : 0) + sz.reduce((s: number, z: number[]) => s + z[1], 0) + GAPm * (ims.length - 1) : 0) + PADm;
-      info.push({ a, e, th, ims, sz, h });
+      // items under the text, top to bottom, each scaled as a whole: its own width, or narrower to fit the cell
+      // (after a resize of the whole table, its own width changes with the table)
+      const its = P.itemsAt(a.r, a.c).map((it) => {
+        const nw = scaled ? it.nw * scaled.sx : it.nw;
+        const iw = it.box.x1 - it.box.x0, ih = it.box.y1 - it.box.y0, k = iw > 0 ? Math.min(w, nw) / iw : 1;
+        return { it, k, h: ih * k, nw };
+      });
+      const h = PADm + th + (its.length ? (th ? GAPm : 0) + its.reduce((s, x) => s + x.h, 0) + GAPm * (its.length - 1) : 0) + PADm;
+      info.push({ a, e, th, its, h });
       if (a.rs === 1) need[a.r] = Math.max(need[a.r], h);
     }
     for (const i in userH) M.rowMin[i] = userH[i] > need[i] + 1 ? userH[i] : 0;
@@ -238,16 +282,21 @@ export class Tables {
     for (const { a, h } of info) if (a.rs > 1) { const s = sum(M.rowH, a.r, a.rs); if (s < h) M.rowH[a.r + a.rs - 1] += h - s; }
     const Y = (i: number) => oy + sum(M.rowH, 0, i);
     // 4) positions; the model is stored on the top-left cell
-    M.cells = snapshot(P, M); M.imgs = {};
+    M.cells = snapshot(P, M); M.items = {}; delete (M as any).imgs;   // (imgs: where earlier versions kept the image places)
     const els2 = api.getSceneElements(), now = new Map<string, any>(els2.map((e: any) => [e.id, e])), ch2: any[] = [];
-    for (const { a, th, ims, sz } of info) {
+    for (const { a, th, its } of info) {
       let y = Y(a.r) + PADm + th + (th ? GAPm : 0);
-      ims.forEach((im: any, n: number) => {
-        const g = { x: X(a.c) + PADm, y, width: sz[n][0], height: sz[n][1] };
-        M.imgs![im.id] = g;
-        ch2.push(upd(now.get(im.id), { ...g, frameId }));
-        y += sz[n][1] + GAPm;
-      });
+      for (const { it, k, h, nw } of its) {
+        // the item keeps its own arrangement: every element is moved and scaled with it
+        const from = { x: it.box.x0, y: it.box.y0 }, to = { x: X(a.c) + PADm, y };
+        for (const el of it.els) {
+          const cd = { ...el.customData, [CELL]: { ...el.customData[CELL], nw } };
+          const moved = upd(now.get(el.id), { ...placeElement(el, k, from, to), frameId, customData: cd });
+          M.items[el.id] = { x: moved.x, y: moved.y, width: moved.width, height: moved.height };
+          ch2.push(moved);
+        }
+        y += h + GAPm;
+      }
     }
     for (const { a, e } of info) {
       const head = a.r === 0 && a.c === 0;
@@ -298,10 +347,12 @@ export class Tables {
     this.writable(view);
     const api = view.excalidrawAPI, P = parts(api, T); if (!P.head) return;
     const M = copyModel(P.head.customData[MODEL]), k = scaleModel(M, sx, sy);
-    api.updateScene({ elements: withChanges(P.els, [
-      upd(P.head, { customData: { ...P.head.customData, [MODEL]: M } }),
-      ...P.imgs.map((im: any) => upd(im, { width: im.width * k, height: im.height * k })),   // images scale with the text
-    ]), ...LATER });
+    // items scale with the text (each about its own corner: the layout then puts it in place)
+    const items = P.items.flatMap((it) => it.els.map((el) => upd(el, {
+      ...placeElement(el, k, { x: it.box.x0, y: it.box.y0 }, { x: it.box.x0, y: it.box.y0 }),
+      customData: { ...el.customData, [CELL]: { ...el.customData[CELL], nw: it.nw * k } },
+    })));
+    api.updateScene({ elements: withChanges(P.els, [upd(P.head, { customData: { ...P.head.customData, [MODEL]: M } }), ...items]), ...LATER });
     this.layout(view, T, { fromModel: true });
     commit(api);
   }
@@ -319,38 +370,50 @@ export class Tables {
       if ((e.frameId ?? null) !== (P.head.frameId ?? null)) return true;
       const b = P.bound(e); if (b && (Math.abs(b.fontSize - H.fs * ratioOf(e)) > 0.001 || !b.customData?.[TEXT])) return true;
     }
-    if (!sameOrder(P.els, stacked(P.els, T))) return true;   // an image behind the cells, or something between them
-    for (const im of P.imgs) {
-      const g = H.imgs?.[im.id];
-      if (!g || (["x", "y", "width", "height"] as const).some((k) => Math.abs(im[k] - g[k]) > 1)) return true;
+    if (!sameOrder(P.els, stacked(P.els, T))) return true;   // an item behind the cells, or something between them
+    for (const el of P.items.flatMap((it) => it.els)) {
+      const g = H.items?.[el.id];
+      if (!g || (["x", "y", "width", "height"] as const).some((k) => Math.abs(el[k] - g[k]) > 1)) return true;
     }
     return false;
   }
 
-  // An image dropped on a cell joins that cell (and the table's groups); an image dragged out of the table leaves it.
+  // Items follow where the user drops them: an item dropped on a cell joins that cell (and the table's groups),
+  // one dragged out of the table leaves it. An item is an image, or a group the user made: everything in the group goes
+  // together, arranged as it is. Shapes that are in no group (arrows, notes drawn over the table) are never taken in.
   adopt(view: any): Set<string> {
     const api = view.excalidrawAPI, els = api.getSceneElements(), changed = new Set<string>(), ups: any[] = [];
-    const cells = els.filter((e: any) => e.type === "rectangle" && e.customData?.[CELL]);
+    const cells = els.filter((e: any) => cellData(e));
     const heads = new Map<string, any>();
-    for (const e of els) if (e.customData?.[MODEL]) heads.set(e.customData[CELL].id, e);
+    for (const e of cells) if (e.customData[MODEL]) heads.set(e.customData[CELL].id, e);
     const groups = (T: string) => groupsOf(heads.get(T));
-    for (const im of els.filter((e: any) => e.type === "image")) {
-      const cx = im.x + im.width / 2, cy = im.y + im.height / 2, cur = im.customData?.[CELL];
+    const { units, loose, tableGroups } = unitsOf(els);
+    const leave = (e: any) => {
+      const cd = { ...e.customData }; delete cd[CELL];
+      changed.add(e.customData[CELL].id);
+      return upd(e, { customData: cd, groupIds: (e.groupIds || []).filter((g: string) => !tableGroups.has(g)) });
+    };
+    for (const e of loose) ups.push(leave(e));
+    for (const [k, unit] of units) {
+      const b = bounds(unit)!, cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
       const hit = cells.find((r: any) => cx >= r.x && cx <= r.x + r.width && cy >= r.y && cy <= r.y + r.height);
-      if (hit) {
-        const n = hit.customData[CELL];
-        if (cur && cur.id === n.id && cur.r === n.r && cur.c === n.c) continue;
-        const g = groups(n.id), old = cur ? groups(cur.id) : [];
-        const groupIds = [...(im.groupIds || []).filter((x: string) => !old.includes(x) && !g.includes(x)), ...g];
-        ups.push(upd(im, { customData: { ...(im.customData || {}), [CELL]: { id: n.id, r: n.r, c: n.c, img: cur?.img || fileLink(view, im) } },
-          groupIds, frameId: hit.frameId ?? null }));
-        changed.add(n.id); if (cur) changed.add(cur.id);
-      } else if (cur) {
-        const old = groups(cur.id), cd = { ...im.customData };
-        delete cd[CELL];
-        ups.push(upd(im, { customData: cd, groupIds: (im.groupIds || []).filter((x: string) => !old.includes(x)) }));
-        changed.add(cur.id);
+      if (!hit) { for (const e of unit) if (e.customData?.[CELL]) ups.push(leave(e)); continue; }
+      const n = hit.customData[CELL];
+      const settled = unit.every((e) => { const m = e.customData?.[CELL]; return m && m.id === n.id && m.r === n.r && m.c === n.c && itemOf(e) === k; });
+      if (settled) continue;
+      // its own width: kept when it moves from cell to cell, else its width as dropped
+      const nw = unit.find((e) => itemOf(e) === k && e.customData[CELL].nw > 0)?.customData[CELL].nw ?? b.x1 - b.x0;
+      for (const e of unit) {
+        const m = e.customData?.[CELL];
+        if (m) changed.add(m.id);
+        const img = e.type === "image" ? { img: m?.img || fileLink(view, e) } : {};
+        ups.push(upd(e, {
+          customData: { ...(e.customData || {}), [CELL]: { id: n.id, r: n.r, c: n.c, item: k, nw, ...img } },
+          groupIds: [...(e.groupIds || []).filter((g: string) => !tableGroups.has(g)), ...groups(n.id)],
+          frameId: hit.frameId ?? null,
+        }));
       }
+      changed.add(n.id);
     }
     if (ups.length) api.updateScene({ elements: withChanges(els, ups), ...LATER });
     return changed;
@@ -417,7 +480,7 @@ export class Tables {
     const M: Model = { id: "ext" + rnd().toString(36), fs: s.fontSize, nR, nC, header, headerCol: false, colors: opt.colors ?? this.colors(),
       cols, rowMin: Array(nR).fill(0), rowH: Array(nR).fill(MINH), merges: [] };
     const content: Content = {};
-    opt.rows?.forEach((row, r) => row.forEach((text, c) => { if (text) content[key(r, c)] = { text, imgs: [] }; }));
+    opt.rows?.forEach((row, r) => row.forEach((text, c) => { if (text) content[key(r, c)] = { text, items: [] }; }));
     await this.draw(view, M, x, y, fr?.id ?? null, null, content);
     commit(api);
     return M.id;
@@ -436,21 +499,21 @@ export class Tables {
     const content: Content = {};
     for (const a of anchors(M)) {
       const e = P.rectAt(a.r, a.c), b = P.bound(e), bg = e?.backgroundColor;
-      content[key(a.r, a.c)] = { text: textOf(b), imgs: P.imgsAt(a.r, a.c).map((x: any) => x.id), al: alignOf(e, b), fr: ratioOf(e),
+      content[key(a.r, a.c)] = { text: textOf(b), items: P.itemsAt(a.r, a.c).map((it) => it.key), al: alignOf(e, b), fr: ratioOf(e),
         // a cell in the table's own header / cell colour follows the header rows and columns; a colour the user picked moves with the cell
         bg: bg && bg !== "transparent" && bg !== C.header && bg !== C.cell ? bg : undefined };
     }
     const sel: Anchor[] = cells.map((n) => ({ r: n.r, c: n.c, rs: n.rs || 1, cs: n.cs || 1 }));
     const N = fn(M, content, sel);
-    // rebuild: delete the old cells, move images to their new cell (or delete them with a deleted cell)
+    // rebuild: delete the old cells, move items to their new cell (or delete them with a deleted cell)
     const x = P.head.x, y = P.head.y, frameId = P.head.frameId ?? null, groups = groupsOf(P.head), after = below(P.els, T);
     const old = new Set<string>([...P.rects.map((r: any) => r.id), ...P.rects.map((r: any) => P.bound(r)?.id).filter(Boolean)]);
-    const imgAt: Record<string, string> = {};
-    for (const [k, v] of Object.entries(N.content)) for (const id of v.imgs || []) imgAt[id] = k;
+    const itemAt: Record<string, string> = {};   // item -> its new cell
+    for (const [k, v] of Object.entries(N.content)) for (const it of v.items || []) itemAt[it] = k;
     api.updateScene({ elements: api.getSceneElements().map((e: any) => {
       if (old.has(e.id)) return upd(e, { isDeleted: true });
-      if (isImageOf(e, T)) {
-        const k = imgAt[e.id]; if (!k) return upd(e, { isDeleted: true });
+      if (isItemOf(e, T)) {
+        const k = itemAt[itemOf(e)!]; if (!k) return upd(e, { isDeleted: true });
         const [r, c] = k.split(",").map(Number);
         return upd(e, { customData: { ...e.customData, [CELL]: { ...e.customData[CELL], r, c } } });
       }

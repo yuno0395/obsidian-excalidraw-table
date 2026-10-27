@@ -6,7 +6,7 @@ const ops = structureOps(() => 100, (k) => k);
 const model = (nR: number, nC: number, merges: Model["merges"] = []): Model =>
   ({ id: "t", nR, nC, fs: 16, cols: Array(nC).fill(100), rowMin: Array(nR).fill(0), rowH: Array(nR).fill(36), merges });
 // content "r,c" in every visible cell
-const fill = (M: Model): Content => Object.fromEntries(anchors(M).map((a) => [key(a.r, a.c), { text: key(a.r, a.c), imgs: [] }]));
+const fill = (M: Model): Content => Object.fromEntries(anchors(M).map((a) => [key(a.r, a.c), { text: key(a.r, a.c), items: [] }]));
 const texts = (c: Content) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v.text]));
 const sel = (r: number, c: number, rs = 1, cs = 1) => ({ r, c, rs, cs });
 
@@ -113,7 +113,7 @@ test("stretching one way keeps the font; the stretched rows keep their height", 
 
 test("merge keeps the first cell's font size", () => {
   const M = model(1, 2);
-  const R = ops.merge(M, { "0,0": { text: "a", imgs: [], fr: 1.5 }, "0,1": { text: "b", imgs: [], fr: 0.5 } }, [sel(0, 0), sel(0, 1)]);
+  const R = ops.merge(M, { "0,0": { text: "a", items: [], fr: 1.5 }, "0,1": { text: "b", items: [], fr: 0.5 } }, [sel(0, 0), sel(0, 1)]);
   assert.equal(R.content["0,0"].fr, 1.5);
 });
 

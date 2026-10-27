@@ -3,8 +3,8 @@
 
 import { sceneX, sceneY } from "./geom";
 import { t } from "./i18n";
-import { CELL, anchors, cellAt } from "./model";
-import { Tables, isCellSelection, modelOf, selectedCells, wholeTableSelected } from "./table";
+import { anchors, cellAt } from "./model";
+import { Tables, cellData, isCellSelection, modelOf, selectedCells, wholeTableSelected } from "./table";
 import { CopyFormat } from "./text";
 import { CellToolbar, StretchHandles } from "./toolbar";
 import { NEVER, until } from "./util";
@@ -107,8 +107,8 @@ export class ViewHook {
       if (!isTab) return;
       const els = api.getSceneElements(), ed = st.editingTextElement;
       const box = els.find((e: any) => e.id === (ed.containerId ?? els.find((x: any) => x.id === ed.id)?.containerId));
-      const n = box?.customData?.[CELL];
-      if (!n || box.type !== "rectangle") return;
+      const n = cellData(box);   // typing in a cell (not in a shape of an item placed in a cell)
+      if (!n) return;
       this.stop(ev);
       this.hop(n, ev.shiftKey ? -1 : 1);
       return;
@@ -180,8 +180,8 @@ export class ViewHook {
         }
         if (!next) break;
         const rect = api.getSceneElements().find((e: any) => e.id === to);
-        if (!rect?.customData?.[CELL]) break;
-        cur = rect.customData[CELL]; d = next as 1 | -1;
+        const n = cellData(rect); if (!n) break;
+        cur = n; d = next as 1 | -1;
       }
     } catch (e) { console.error("Excalidraw Table", e); }
     finally {

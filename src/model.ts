@@ -5,7 +5,11 @@
 //   cell rectangle : customData.exTable      = { id, r, c, rs, cs, al, fr }
 //                    (rs/cs = merged rows/columns, al = text alignment, fr = font size as a ratio to the table's)
 //   top-left cell  : customData.exTableModel = Model (below)
-//   image in a cell: customData.exTable      = { id, r, c, img }          (img = vault path of the image)
+//   item in a cell : customData.exTable      = { id, r, c, item, nw, img? }   on every element of the item
+//                    An item is what a cell holds besides its text: an image, or a group the user made (images, shapes,
+//                    text...) kept as it is. item = the group's id, or the image's own id; nw = its own width (it is shown
+//                    at that width, or narrower to fit the cell); img = vault path of an image.
+//                    (Images placed by earlier versions have no `item`: the image's id is the item.)
 //   text in a cell : customData.exTableText  = true                       (alignment already set up)
 
 import { maxOf, minOf } from "./util";
@@ -34,12 +38,14 @@ export interface Model {
   rowH: number[];             // row heights as laid out
   merges: Merge[];
   cells?: (string | null)[][];   // copy of the content as text, for other tools (see snapshot in table.ts)
-  imgs?: Record<string, { x: number; y: number; width: number; height: number }>;
+  // where the elements of the items were put by the last layout, by element id (to see when the user moved one)
+  items?: Record<string, { x: number; y: number; width: number; height: number }>;
 }
 
 // what a cell holds while the table is rebuilt
 // fr: the cell's font size as a ratio to the table's (1 = the table's size), so it scales with the table
-export type Cell = { text: string; imgs: string[]; bg?: string; al?: Align; fr?: number };
+// items: the cell's items, top to bottom (see the item note at the top)
+export type Cell = { text: string; items: string[]; bg?: string; al?: Align; fr?: number };
 export type Content = Record<string, Cell>;
 export type OpResult = { M: Model; content: Content; focus?: { r: number; c: number } };
 export type Op = (M: Model, content: Content, sel: Anchor[]) => OpResult;
@@ -181,7 +187,7 @@ export function structureOps(colWidth: () => number, msg: (k: string) => string)
       return { M, content, focus: { r: top(sel), c: minOf(cols) } };
     },
     // the selection, grown to cover any merged cell it only partly covers, becomes one cell;
-    // texts are joined with line breaks, images are kept, colour and alignment come from the first cell that has them
+    // texts are joined with line breaks, items (images, groups) are kept, colour and alignment come from the first cell that has them
     merge: (M, content, sel) => {
       if (sel.length < 2) throw new TableError(msg("selectTwo"));
       let r0 = minOf(sel.map((s) => s.r)), c0 = minOf(sel.map((s) => s.c));
@@ -197,18 +203,18 @@ export function structureOps(colWidth: () => number, msg: (k: string) => string)
       }
       M.merges = M.merges.filter((m) => m.r > r1 || m.r + m.rs - 1 < r0 || m.c > c1 || m.c + m.cs - 1 < c0);
       M.merges.push({ r: r0, c: c0, rs: r1 - r0 + 1, cs: c1 - c0 + 1 });
-      const texts: string[] = [], imgs: string[] = [];
+      const texts: string[] = [], items: string[] = [];
       let bg: string | undefined, al: Align | undefined, fr: number | undefined;
       for (let i = r0; i <= r1; i++) for (let j = c0; j <= c1; j++) {
         const v = content[key(i, j)]; if (!v) continue;
         if (v.text) texts.push(v.text);
-        imgs.push(...(v.imgs || []));
+        items.push(...(v.items || []));
         if (bg === undefined) bg = v.bg;
         if (al === undefined) al = v.al;
         if (fr === undefined) fr = v.fr;
         delete content[key(i, j)];
       }
-      content[key(r0, c0)] = { text: texts.join("\n"), imgs, bg, al, fr };
+      content[key(r0, c0)] = { text: texts.join("\n"), items, bg, al, fr };
       return { M, content, focus: { r: r0, c: c0 } };
     },
     // the content stays in the top-left cell
