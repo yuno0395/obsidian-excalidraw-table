@@ -18,6 +18,40 @@ import { LATER, NEVER, commit, rnd, until, upd, withChanges } from "./util";
 const isCellOf = (e: any, T: string) => e.type === "rectangle" && e.customData?.[CELL]?.id === T;
 const isImageOf = (e: any, T: string) => e.type === "image" && e.customData?.[CELL]?.id === T;
 
+// The stacking order with table T's elements together in one run: cells (with their text), then the images in cells
+// (a filled cell would hide an image below it). The run stays where the table is, or goes just above `after`
+// (an element id; null: at the bottom), so shapes the user put over the table, arrows or text on an image, stay over it.
+export function stacked(els: any[], T: string, after?: string | null): any[] {
+  const cells = new Set(els.filter((e) => isCellOf(e, T)).map((e) => e.id));
+  const mine = (e: any) => cells.has(e.id) || isImageOf(e, T) || (e.type === "text" && !!e.containerId && cells.has(e.containerId));
+  const first = els.findIndex(mine); if (first < 0) return els;
+  const rest = els.filter((e) => !mine(e));
+  const run = [...els.filter((e) => mine(e) && !isImageOf(e, T)), ...els.filter((e) => isImageOf(e, T))];
+  const found = after ? rest.findIndex((e) => e.id === after) : -1;
+  const at = after === null ? 0 : found >= 0 ? found + 1 : els.slice(0, first).filter((e) => !mine(e)).length;
+  // Things put on the table that ended up behind it (earlier versions rebuilt a table on top of everything):
+  // arrows tied to a cell or an image of the table, and arrows, lines, text and drawings lying on one of its images.
+  // They go just above the table again. (A shape behind the table that is neither, a background, stays behind.)
+  const ids = new Set(run.map((e) => e.id)), imgs = run.filter((e) => isImageOf(e, T));
+  const tied = (e: any) => ids.has(e.startBinding?.elementId) || ids.has(e.endBinding?.elementId);
+  const onImage = (e: any) => ["arrow", "line", "text", "freedraw"].includes(e.type) && !e.containerId && imgs.some((im) => {
+    const cx = e.x + (e.width || 0) / 2, cy = e.y + (e.height || 0) / 2;
+    return cx >= im.x && cx <= im.x + im.width && cy >= im.y && cy <= im.y + im.height;
+  });
+  const under = rest.slice(0, at), lift = under.filter((e) => !e.isDeleted && (tied(e) || onImage(e)));
+  if (!lift.length) return [...under, ...run, ...rest.slice(at)];
+  return [...under.filter((e) => !lift.includes(e)), ...run, ...lift, ...rest.slice(at)];
+}
+const sameOrder = (a: any[], b: any[]) => a.length === b.length && a.every((e, i) => e.id === b[i].id);
+
+// The element just below the table's run (null: the table is at the bottom), to put a rebuilt table back in its place.
+function below(els: any[], T: string): string | null {
+  const cells = new Set(els.filter((e) => isCellOf(e, T)).map((e) => e.id));
+  const mine = (e: any) => cells.has(e.id) || isImageOf(e, T) || (e.type === "text" && !!e.containerId && cells.has(e.containerId));
+  const first = els.findIndex(mine);
+  return first > 0 ? els[first - 1].id : null;
+}
+
 // the cell rectangles of table T
 export const cellRects = (api: any, T: string): any[] => api.getSceneElements().filter((e: any) => isCellOf(e, T));
 
@@ -129,7 +163,8 @@ export class Tables {
   // Reads what the user changed (dragged sizes, typed text), then sets column widths, row heights and positions.
   // opt.resized: whether the last pointer action was a resize, when known (undefined: guess from the shapes).
   // opt.scaled: the table was selected as a whole when the resize began (so the resize scales the table).
-  layout(view: any, T: string, opt: { fromModel?: boolean; resized?: boolean; scaled?: boolean } = {}) {
+  // opt.after: put the table just above this element in the stacking order (see stacked; a rebuilt table goes back in its place).
+  layout(view: any, T: string, opt: { fromModel?: boolean; resized?: boolean; scaled?: boolean; after?: string | null } = {}) {
     const api = view.excalidrawAPI;
     let P = parts(api, T); if (!P.head) return;
     const H: Model = P.head.customData[MODEL], M = copyModel(H);
@@ -219,9 +254,8 @@ export class Tables {
       ch2.push(upd(now.get(e.id), { x: X(a.c), y: Y(a.r), width: sum(M.cols, a.c, a.cs), height: sum(M.rowH, a.r, a.rs),
         customData: { ...e.customData, [CELL]: { ...e.customData[CELL], rs: a.rs, cs: a.cs, al: al[key(a.r, a.c)], fr: fr[key(a.r, a.c)] }, ...(head ? { [MODEL]: M } : {}) } }));
     }
-    // images in front of the cells (so a rebuilt cell's fill does not hide them)
-    const arr = withChanges(els2, ch2), isImg = (e: any) => isImageOf(e, T);
-    api.updateScene({ elements: [...arr.filter((e) => !isImg(e)), ...arr.filter(isImg)], ...LATER });
+    // images just in front of the cells (a cell's fill would hide them), but behind anything drawn over the table
+    api.updateScene({ elements: stacked(withChanges(els2, ch2), T, opt.after), ...LATER });
     fitText();
   }
 
@@ -285,10 +319,8 @@ export class Tables {
       if ((e.frameId ?? null) !== (P.head.frameId ?? null)) return true;
       const b = P.bound(e); if (b && (Math.abs(b.fontSize - H.fs * ratioOf(e)) > 0.001 || !b.customData?.[TEXT])) return true;
     }
-    const order = new Map(P.els.map((e: any, i: number) => [e.id, i]));
+    if (!sameOrder(P.els, stacked(P.els, T))) return true;   // an image behind the cells, or something between them
     for (const im of P.imgs) {
-      const cell = P.rectAt(im.customData[CELL].r, im.customData[CELL].c);
-      if (cell && (order.get(im.id) as number) < (order.get(cell.id) as number)) return true;
       const g = H.imgs?.[im.id];
       if (!g || (["x", "y", "width", "height"] as const).some((k) => Math.abs(im[k] - g[k]) > 1)) return true;
     }
@@ -338,7 +370,9 @@ export class Tables {
 
   // ---------- drawing ----------
   // Draw the cells of M at (x, y). groups: the groups of the table being rebuilt (a new table gets a new group).
-  private async draw(view: any, M: Model, x: number, y: number, frameId: string | null, groups: string[] | null, content: Content = {}) {
+  // after: where the table goes in the stacking order (see stacked); undefined: on top, like any new shape.
+  private async draw(view: any, M: Model, x: number, y: number, frameId: string | null, groups: string[] | null, content: Content = {},
+    after?: string | null) {
     const ea = this.getEA(view), C = this.colors(M);
     ea.reset(); ea.setView(view);
     Object.assign(ea.style, { roughness: 0, strokeWidth: 1, strokeColor: C.stroke, fillStyle: "solid", fontSize: M.fs, strokeStyle: "solid", roundness: null });
@@ -367,7 +401,7 @@ export class Tables {
     await ea.addElementsToView(false, false, true, false, LATER.captureUpdate);   // (captured by the command that draws)
     // the new elements reach the scene a moment later
     await until(() => !!parts(view.excalidrawAPI, M.id).head, 3000);
-    this.layout(view, M.id, { fromModel: true });
+    this.layout(view, M.id, { fromModel: true, after });
   }
 
   // A new table. rows: text of each cell (from a paste); at: top-left corner in the drawing (else the middle of the screen).
@@ -409,7 +443,7 @@ export class Tables {
     const sel: Anchor[] = cells.map((n) => ({ r: n.r, c: n.c, rs: n.rs || 1, cs: n.cs || 1 }));
     const N = fn(M, content, sel);
     // rebuild: delete the old cells, move images to their new cell (or delete them with a deleted cell)
-    const x = P.head.x, y = P.head.y, frameId = P.head.frameId ?? null, groups = groupsOf(P.head);
+    const x = P.head.x, y = P.head.y, frameId = P.head.frameId ?? null, groups = groupsOf(P.head), after = below(P.els, T);
     const old = new Set<string>([...P.rects.map((r: any) => r.id), ...P.rects.map((r: any) => P.bound(r)?.id).filter(Boolean)]);
     const imgAt: Record<string, string> = {};
     for (const [k, v] of Object.entries(N.content)) for (const id of v.imgs || []) imgAt[id] = k;
@@ -422,7 +456,7 @@ export class Tables {
       }
       return e;
     }), ...LATER });
-    await this.draw(view, N.M, x, y, frameId, groups.length ? groups : null, N.content);
+    await this.draw(view, N.M, x, y, frameId, groups.length ? groups : null, N.content, after);
     commit(api);   // one undo step for the whole command (the selection below is not part of it)
     const f = N.focus ?? sel[0];
     return f ? this.select(view, T, [{ r: Math.min(f.r, N.M.nR - 1), c: Math.min(f.c, N.M.nC - 1) }]) : [];
