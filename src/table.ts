@@ -125,6 +125,16 @@ const textOf = (b: any) => (b ? b.originalText ?? b.text ?? "" : "");
 // alignment of a cell: the text's own alignment once the plugin has set it up (so a change in Excalidraw's panel is kept)
 const alignOf = (e: any, b: any): Align => (b?.customData?.[TEXT] ? b.textAlign : e?.customData?.[CELL]?.al) || "left";
 
+// How the plugin sets up text that is new in a cell (Excalidraw makes it in its current text style): the table's size
+// for the cell, the cell's alignment at the top, the table's text colour, and the mark that it has been set up.
+function newTextLook(M: Model, cell: any, b: any) {
+  const n = cell.customData[CELL], tc = textColor(M, n.r, n.c);
+  return {
+    fontSize: M.fs * ratioOf(cell), textAlign: alignOf(cell, b), verticalAlign: "top",
+    ...(tc ? { strokeColor: tc } : {}), customData: { ...(b.customData || {}), [TEXT]: true },
+  };
+}
+
 function snapshot(P: ReturnType<typeof parts>, M: Model) {
   const cells: (string | null)[][] = Array.from({ length: M.nR }, () => Array(M.nC).fill(null));
   for (const a of anchors(M)) {
@@ -248,11 +258,8 @@ export class Tables {
       if (b.customData?.[TEXT] && !opt.fromModel && !scaled && Math.abs(b.fontSize - H.fs * fr[k]) > 0.01) fr[k] = b.fontSize / M.fs;
       const p: any = {}, want = M.fs * fr[k];
       if (Math.abs(b.fontSize - want) > 0.001) p.fontSize = want;
-      if (!b.customData?.[TEXT]) {
-        // text just typed into the cell: set it up (alignment; the table's text colour, as Excalidraw uses its current colour)
-        Object.assign(p, { textAlign: al[k], verticalAlign: "top", customData: { ...(b.customData || {}), [TEXT]: true } });
-        const tc = textColor(M, a.r, a.c); if (tc) p.strokeColor = tc;
-      }
+      // text new in the cell that was not set up while it was typed (see prepareText): set it up now
+      if (!b.customData?.[TEXT]) Object.assign(p, newTextLook(M, e, b), { fontSize: want });
       if (b.frameId !== frameId) p.frameId = frameId;
       if (Object.keys(p).length) ch.push(upd(b, p));
     }
@@ -306,6 +313,18 @@ export class Tables {
     // images just in front of the cells (a cell's fill would hide them), but behind anything drawn over the table
     api.updateScene({ elements: stacked(withChanges(els2, ch2), T, opt.after), ...LATER });
     fitText();
+  }
+
+  // Text that is starting to be typed into a cell gets the cell's look at once (see newTextLook), so it does not
+  // change size, alignment or colour when the typing ends. Text the plugin has set up before is left as it is.
+  prepareText(view: any, id: string) {
+    const api = view.excalidrawAPI, els = api.getSceneElements();
+    const b = els.find((e: any) => e.id === id);
+    if (!b || b.type !== "text" || !b.containerId || b.customData?.[TEXT]) return;
+    const cell = els.find((e: any) => e.id === b.containerId), n = cellData(cell); if (!n) return;
+    const M = modelOf(api, n.id); if (!M) return;
+    // uncaptured: it becomes part of the undo step of the typing itself
+    api.updateScene({ elements: withChanges(els, [upd(b, newTextLook(M, cell, b))]), ...LATER });
   }
 
   // Was the whole table resized as one (all cells scaled alike)? Then: the scale and the new top-left corner.

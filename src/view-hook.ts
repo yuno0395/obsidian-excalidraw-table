@@ -25,6 +25,7 @@ export class ViewHook {
   private toolbar: CellToolbar;
   private handles: StretchHandles;
   private editing = false;
+  private preparedText: string | null = null;   // the text being typed that prepareText was asked for
   private closed = false;
   // keyboard selection: the cell it started from (Shift+arrows grow the range from here) and the cell that moves
   private range: { T: string; anchor: { r: number; c: number }; focus: { r: number; c: number }; ids: string } | null = null;
@@ -52,6 +53,12 @@ export class ViewHook {
     // typing ended: tidy at once (not only at the next click). Excalidraw does not always report the end of typing
     // through onChange, so once typing is seen, watch for its end. Also keep the toolbar and handles in place.
     if (api.onChange) this.add(api.onChange((_els: any, st: any) => {
+      // text that starts to be typed into a cell takes the table's text size and look at once (once per text)
+      const ed = st?.editingTextElement;
+      if (ed && ed.id !== this.preparedText && !this.closed) {
+        this.preparedText = ed.id;
+        window.setTimeout(() => { try { if (!this.closed) tables.prepareText(view, ed.id); } catch (e) { console.error("Excalidraw Table", e); } }, 0);
+      }
       if (st?.editingTextElement && !this.editing && !this.closed) {
         this.editing = true;
         until(() => this.closed || !api.getAppState().editingTextElement, 6 * 3600 * 1000).then(() => {
